@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>N0JCG Radio Operations Center</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">N0JCG</p>
+        <h1>Radio Operations Center</h1>
+      </div>
+      <div id="system-badge" class="badge neutral">Connecting</div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Station overview</p>
+          <h2 id="site-name">Cripple Creek, Colorado</h2>
+          <p class="lede">One station view. Independent RF nodes. Deliberate transmit control.</p>
+        </div>
+        <div class="interlock" id="interlock">
+          <span class="interlock-light"></span>
+          <div><strong>Transmit locked</strong><small>Loading safety state</small></div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-heading">
+          <div><p class="eyebrow">Live inventory</p><h2>Radio services</h2></div>
+          <p>Phase 0 foundation</p>
+        </div>
+        <div class="service-grid" id="service-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="next-step">
+        <p class="eyebrow">Next controlled milestone</p>
+        <h2>Receive first. Measure before transmitting.</h2>
+        <p>Detect the DigiRig and SDR hardware, establish stable device ownership, bring up the APRS receive-only path, and survey candidate packet channels.</p>
+      </section>
+    </main>
+
+    <footer>N0JCG-ROC <span id="version">starting</span></footer>
+    <script src="/app.js"></script>
+  </body>
+</html>

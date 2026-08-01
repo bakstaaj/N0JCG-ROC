@@ -1,0 +1,21 @@
+[Unit]
+Description=N0JCG Radio Operations Center
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
+Environment=PYTHONPATH=/home/n0jcg/sdrdev/N0JCG-ROC/src
+ExecStart=/usr/bin/python3 -m n0jcg_roc.server --host 0.0.0.0 --port 8095
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

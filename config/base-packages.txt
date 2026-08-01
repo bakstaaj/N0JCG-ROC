@@ -1,0 +1,22 @@
+# Common development and deployment tools
+curl
+git
+jq
+lsof
+make
+python3-venv
+rsync
+socat
+
+# USB, audio, and SDR discovery
+alsa-utils
+pciutils
+rtl-sdr
+sox
+usbutils
+
+# AX.25 and packet-radio foundation
+ax25-apps
+ax25-tools
+direwolf
+libax25

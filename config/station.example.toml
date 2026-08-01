@@ -1,0 +1,21 @@
+[station]
+name = "N0JCG Radio Operations Center"
+callsign = "N0JCG"
+linux_user = "n0jcg"
+site_label = "Cripple Creek, Colorado"
+grid_square = "DM78JT"
+
+[server]
+hostname = "n0jcg-roc"
+lan_address = "192.168.68.145"
+listen_address = "0.0.0.0"
+listen_port = 8095
+
+[safety]
+transmit_enabled = false
+gateway_frequency_hz = 0
+coordination_confirmed = false
+
+[identities]
+winlink_rms = "N0JCG-10"
+aprs_igate = "N0JCG-5"
