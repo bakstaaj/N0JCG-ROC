@@ -22,6 +22,7 @@ Ubuntu installed 42 new packages including dependencies, using approximately
 - Direwolf has no station configuration and is not active.
 - No systemd radio service was enabled.
 - The DigiRig Mobile is detected as a CP2102N serial interface and C-Media USB Audio capture/playback device.
+- The RTL dongle is detected as Realtek RTL2838/R820T, EEPROM serial `00000144`.
 - `n0jcg` is a member of `dialout` and `audio`; no modem process owns either interface.
 - No RTL-SDR is present yet.
 - No frequency, modem channel, PTT method, APRS-IS login, or Winlink service
@@ -48,5 +49,7 @@ cd /home/jim/sdrdev/N0JCG-ROC
 After each hardware change, run `tools/server_preflight.sh` followed by
 `tools/hardware_ownership_preflight.sh`. The current stable serial path is
 `/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_30217bb31dc6ef11ba3469527a5e3baa-if00-port0`.
-Do not create a modem service or transmit until the radio profile and local
-frequency coordination are documented.
+Do not create a modem or SDR service, or transmit, until the radio profiles and
+local frequency coordination are documented. The bounded `rtl_test -t` probe
+identified the dongle and restored the kernel driver; its R820T-only result does
+not constitute an RF reception test.

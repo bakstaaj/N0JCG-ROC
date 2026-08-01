@@ -28,6 +28,8 @@ The DigiRig Mobile is now attached and read-only ownership checks pass:
 - Silicon Labs CP2102N serial interface at `/dev/ttyUSB0`, using its stable
   `/dev/serial/by-id` path.
 - C-Media USB Audio Device as ALSA card 1 (`hw:CARD=Device,DEV=0`).
+- Realtek RTL2838 DVB-T dongle with R820T tuner and EEPROM serial `00000144`;
+  `rtl_eeprom` read it successfully and restored the kernel driver.
 - `n0jcg` has `dialout` and `audio` membership.
 - No Direwolf, Soundmodem, or AX.25 daemon is active; no transmit operation was
   attempted.
