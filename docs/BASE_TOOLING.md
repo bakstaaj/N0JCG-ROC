@@ -53,3 +53,12 @@ Do not create a modem or SDR service, or transmit, until the radio profiles and
 local frequency coordination are documented. The bounded `rtl_test -t` probe
 identified the dongle and restored the kernel driver; its R820T-only result does
 not constitute an RF reception test.
+
+For a repeatable receive-only check after reconnecting hardware, run:
+
+```bash
+./tools/hardware_receive_preflight.sh
+```
+
+It captures two seconds from the DigiRig and a bounded RTL-FM sample, then
+removes temporary files. It never configures PTT or starts a persistent service.

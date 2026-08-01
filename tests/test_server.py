@@ -46,6 +46,11 @@ class SafetyTests(unittest.TestCase):
         self.assertTrue((ROOT / "deploy" / "validate_deployed.sh").is_file())
         self.assertTrue((ROOT / "tools" / "hardware_ownership_preflight.sh").is_file())
         self.assertTrue((ROOT / "tools" / "prepare_radio_permissions.sh").is_file())
+        receive = (ROOT / "tools" / "hardware_receive_preflight.sh").read_text(encoding="utf-8")
+        self.assertIn("arecord", receive)
+        self.assertIn("rtl_fm", receive)
+        self.assertNotIn("direwolf", receive.lower())
+        self.assertNotIn("systemctl", receive.lower())
 
 
 class ServerTests(unittest.TestCase):
