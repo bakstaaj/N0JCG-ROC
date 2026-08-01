@@ -8,6 +8,7 @@ ROC_USER="${ROC_USER:-n0jcg}"
 ROC_PORT="${ROC_PORT:-8095}"
 ROC_IDENTITY_FILE="${ROC_IDENTITY_FILE:-${HOME}/.ssh/n0jcg_roc_ed25519}"
 BASE_URL="http://${ROC_HOST}:${ROC_PORT}"
+ROC_EXPECT_HARDWARE_STATE="${ROC_EXPECT_HARDWARE_STATE:-}"
 
 [[ "${ROC_PORT}" =~ ^[0-9]+$ ]] && (( ROC_PORT >= 1 && ROC_PORT <= 65535 )) || {
   echo 'FINAL: FAIL - invalid ROC_PORT'
@@ -26,8 +27,9 @@ echo 'PASS served app.js and index.html exactly match local source'
 
 health_json="$(curl -fsS "${BASE_URL}/api/health")"
 system_json="$(curl -fsS "${BASE_URL}/api/system")"
-python3 - "${health_json}" "${system_json}" <<'PY'
+ROC_EXPECT_HARDWARE_STATE="${ROC_EXPECT_HARDWARE_STATE}" python3 - "${health_json}" "${system_json}" <<'PY'
 import json
+import os
 import sys
 
 health = json.loads(sys.argv[1])
@@ -36,12 +38,12 @@ assert health["status"] == "ok", health
 assert health["transmit"]["ready"] is False, health
 assert system["host"]["hostname"] == "n0jcg-roc", system
 assert system["tooling"]["ready"] is True, system
-assert system["hardware"]["state"] == "bare-server", system
-assert system["hardware"]["serial_by_id"] == [], system
-assert system["hardware"]["usb_audio_cards"] == [], system
 assert system["hardware"]["rtl_sdr_count"] == 0, system
+expected = os.environ.get("ROC_EXPECT_HARDWARE_STATE", "")
+if expected:
+    assert system["hardware"]["state"] == expected, system
 PY
-echo 'PASS live APIs report ready tooling, bare hardware, and locked transmit'
+echo "PASS live APIs report ready tooling, ${ROC_EXPECT_HARDWARE_STATE:-observed} hardware, and locked transmit"
 
 ssh -i "${ROC_IDENTITY_FILE}" -o BatchMode=yes -o ConnectTimeout=8 \
   "${ROC_USER}@${ROC_HOST}" \

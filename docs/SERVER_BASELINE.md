@@ -23,8 +23,17 @@ devices. There was no `/dev/serial` inventory, no DigiRig USB audio device, and
 no RTL-SDR attached. ALSA utilities, `rtl_test`, `rtl_eeprom`, and Direwolf were
 not installed. Python 3.12.3 was present.
 
-This is a clean application baseline, not a completed radio preflight. Re-run
-`tools/server_preflight.sh` after connecting each radio interface and SDR.
+The DigiRig Mobile is now attached and read-only ownership checks pass:
+
+- Silicon Labs CP2102N serial interface at `/dev/ttyUSB0`, using its stable
+  `/dev/serial/by-id` path.
+- C-Media USB Audio Device as ALSA card 1 (`hw:CARD=Device,DEV=0`).
+- `n0jcg` has `dialout` and `audio` membership.
+- No Direwolf, Soundmodem, or AX.25 daemon is active; no transmit operation was
+  attempted.
+
+Re-run `tools/server_preflight.sh` and
+`tools/hardware_ownership_preflight.sh` after each hardware change.
 
 ## Phase 0 deployment
 

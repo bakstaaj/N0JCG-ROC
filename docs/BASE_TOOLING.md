@@ -5,7 +5,7 @@ at `config/base-packages.txt`.
 
 ## Installed capabilities
 
-| Area | Packages or commands | Purpose before hardware arrives |
+| Area | Packages or commands | Purpose before hardware configuration |
 | --- | --- | --- |
 | Development | Git, Make, Python 3 venv | Reproducible source validation and isolated future Python tooling |
 | Deployment | curl, jq, rsync, lsof, socat | API checks, structured output, synchronization, port and stream diagnostics |
@@ -21,8 +21,8 @@ Ubuntu installed 42 new packages including dependencies, using approximately
 
 - Direwolf has no station configuration and is not active.
 - No systemd radio service was enabled.
-- No ALSA card is present yet.
-- No serial/PTT interface is present yet.
+- The DigiRig Mobile is detected as a CP2102N serial interface and C-Media USB Audio capture/playback device.
+- `n0jcg` is a member of `dialout` and `audio`; no modem process owns either interface.
 - No RTL-SDR is present yet.
 - No frequency, modem channel, PTT method, APRS-IS login, or Winlink service
   configuration was created.
@@ -45,6 +45,8 @@ cd /home/jim/sdrdev/N0JCG-ROC
 ./deploy/install_base_tools_remote.sh --check-only
 ```
 
-When hardware arrives, connect one device at a time and run
-`tools/server_preflight.sh` after each attachment. Record stable receiver EEPROM
-serials and `/dev/serial/by-id` ownership before creating persistent services.
+After each hardware change, run `tools/server_preflight.sh` followed by
+`tools/hardware_ownership_preflight.sh`. The current stable serial path is
+`/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_30217bb31dc6ef11ba3469527a5e3baa-if00-port0`.
+Do not create a modem service or transmit until the radio profile and local
+frequency coordination are documented.

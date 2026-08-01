@@ -44,6 +44,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("CONFIRM_REMOVE", undeploy)
         self.assertTrue((ROOT / "deploy" / "install_base_tools_remote.sh").is_file())
         self.assertTrue((ROOT / "deploy" / "validate_deployed.sh").is_file())
+        self.assertTrue((ROOT / "tools" / "hardware_ownership_preflight.sh").is_file())
+        self.assertTrue((ROOT / "tools" / "prepare_radio_permissions.sh").is_file())
 
 
 class ServerTests(unittest.TestCase):

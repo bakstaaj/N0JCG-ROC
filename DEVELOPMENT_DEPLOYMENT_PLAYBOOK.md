@@ -70,6 +70,13 @@ a modem configuration, claim a USB device, load an RF frequency, or enable
 transmission. Hardware-specific configuration begins only after the device is
 physically present and identified by stable serial or USB path.
 
+After attaching a DigiRig, run `tools/server_preflight.sh` followed by
+`tools/hardware_ownership_preflight.sh` to confirm dialout access, ALSA
+endpoints, stable USB identity, and zero modem-process ownership.
+If the ownership report shows the operator lacks `dialout` or `audio`, run
+`tools/prepare_radio_permissions.sh`, reconnect the operator session, and repeat
+the ownership report before creating a modem service.
+
 ## Deployment
 
 ```bash
