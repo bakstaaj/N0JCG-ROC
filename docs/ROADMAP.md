@@ -7,6 +7,7 @@
 - Service inventory and health APIs.
 - Default-off transmit interlock.
 - Automated local smoke tests.
+- Live server resource, base-tool readiness, and bare-hardware inventory.
 
 ## Phase 1 - Core RF services
 

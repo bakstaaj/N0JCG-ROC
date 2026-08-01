@@ -46,6 +46,12 @@ main { padding: 48px 0 72px; }
 .service-card h3 { margin: 18px 0 8px; font-size: 1rem; }
 .service-card p { margin-bottom: 0; color: var(--muted); font-size: .82rem; line-height: 1.5; }
 .state { display: inline-block; margin-top: 18px; color: var(--amber); font-size: .72rem; font-weight: 800; text-transform: uppercase; }
+.metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.metric-card { min-height: 140px; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: rgba(16,28,37,.84); }
+.metric-card span, .metric-card small { display: block; color: var(--muted); }
+.metric-card span { font-size: .72rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.metric-card strong { display: block; margin: 16px 0 5px; color: var(--cyan); font-size: 1.4rem; }
+.metric-card small { font-size: .78rem; line-height: 1.4; }
 .next-step { margin-top: 56px; padding: 32px; border-left: 3px solid var(--cyan); background: rgba(20,38,49,.55); }
 .next-step h2 { font-size: clamp(1.35rem, 3vw, 2rem); }
 .next-step > p:last-child { max-width: 780px; margin: 14px 0 0; color: var(--muted); line-height: 1.65; }
@@ -53,6 +59,7 @@ footer { padding: 22px 0 34px; border-top: 1px solid var(--line); color: var(--m
 
 @media (max-width: 900px) {
   .service-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 620px) {
@@ -61,5 +68,6 @@ footer { padding: 22px 0 34px; border-top: 1px solid var(--line); color: var(--m
   .hero { grid-template-columns: 1fr; padding: 24px; }
   .interlock { min-width: 0; }
   .service-grid { grid-template-columns: 1fr; }
+  .metric-grid { grid-template-columns: 1fr; }
   .section-heading { align-items: start; gap: 12px; flex-direction: column; }
 }

@@ -48,6 +48,14 @@ The Phase 0 service exposes:
 - `GET /api/health`
 - `GET /api/station`
 - `GET /api/services`
+- `GET /api/system`
+
+`/api/system` reports host resources, declared tool availability, and observed
+audio/serial/RTL hardware without claiming or configuring any device. Hardware
+presence is an inventory observation, not proof that an RF service is ready.
+Built-in host sound cards remain visible in the API but do not count as an
+attached RF path; only USB audio, stable serial devices, and RTL-SDRs change the
+bare-server state.
 
 Future node adapters will normalize each project's existing API rather than
 copying its backend into this repository.

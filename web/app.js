@@ -13,19 +13,52 @@ function serviceCard(service) {
   return card;
 }
 
+function formatBytes(value) {
+  if (value === null || value === undefined) return "Unavailable";
+  const gibibytes = value / (1024 ** 3);
+  return `${gibibytes.toFixed(gibibytes >= 10 ? 0 : 1)} GiB`;
+}
+
+function formatUptime(seconds) {
+  if (seconds === null || seconds === undefined) return "Unavailable";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  return days ? `${days}d ${hours}h` : `${hours}h`;
+}
+
+function showSystem(system) {
+  document.querySelector("#metric-host").textContent = system.host.hostname;
+  document.querySelector("#metric-platform").textContent = `${system.host.operating_system} ${system.host.kernel} · ${system.host.architecture}`;
+  document.querySelector("#metric-uptime").textContent = formatUptime(system.resources.uptime_seconds);
+  document.querySelector("#metric-load").textContent = `1 minute load: ${system.resources.load_1m ?? "unavailable"}`;
+  document.querySelector("#metric-memory").textContent = formatBytes(system.resources.memory.available_bytes);
+  document.querySelector("#metric-memory-total").textContent = `${formatBytes(system.resources.memory.total_bytes)} total`;
+  document.querySelector("#metric-disk").textContent = formatBytes(system.resources.disk.free_bytes);
+  document.querySelector("#metric-disk-total").textContent = `${formatBytes(system.resources.disk.total_bytes)} total`;
+  document.querySelector("#metric-tools").textContent = system.tooling.ready ? "Ready" : "Incomplete";
+  document.querySelector("#metric-tools-detail").textContent = system.tooling.ready ? "All declared base tools found" : `Missing: ${system.tooling.missing.join(", ")}`;
+
+  const hardwareCount = system.hardware.serial_by_id.length + system.hardware.usb_audio_cards.length + system.hardware.rtl_sdr_count;
+  document.querySelector("#metric-hardware").textContent = hardwareCount ? `${hardwareCount} detected` : "None";
+  document.querySelector("#metric-hardware-detail").textContent = `${system.hardware.serial_by_id.length} serial · ${system.hardware.usb_audio_cards.length} USB audio · ${system.hardware.rtl_sdr_count} RTL-SDR`;
+  document.querySelector("#hardware-state").textContent = system.hardware.state === "bare-server" ? "Bare server ready" : "Devices present";
+}
+
 async function start() {
   try {
-    const [healthResponse, stationResponse, servicesResponse] = await Promise.all([
+    const [healthResponse, stationResponse, servicesResponse, systemResponse] = await Promise.all([
       fetch("/api/health"),
       fetch("/api/station"),
       fetch("/api/services"),
+      fetch("/api/system"),
     ]);
-    if (![healthResponse, stationResponse, servicesResponse].every((response) => response.ok)) {
+    if (![healthResponse, stationResponse, servicesResponse, systemResponse].every((response) => response.ok)) {
       throw new Error("API response failed");
     }
     const health = await healthResponse.json();
     const station = await stationResponse.json();
     const inventory = await servicesResponse.json();
+    const system = await systemResponse.json();
 
     badge.textContent = "Foundation online";
     badge.className = "badge ok";
@@ -36,6 +69,7 @@ async function start() {
     interlock.querySelector("strong").textContent = health.transmit.ready ? "Transmit ready" : "Transmit locked";
     interlock.querySelector("small").textContent = reasons || "All configured safety gates passed";
     inventory.services.forEach((service) => serviceGrid.appendChild(serviceCard(service)));
+    showSystem(system);
   } catch (error) {
     badge.textContent = "Service unavailable";
     console.error(error);

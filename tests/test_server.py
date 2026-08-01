@@ -43,6 +43,7 @@ class SafetyTests(unittest.TestCase):
         self.assertIn(expected_path, undeploy)
         self.assertIn("CONFIRM_REMOVE", undeploy)
         self.assertTrue((ROOT / "deploy" / "install_base_tools_remote.sh").is_file())
+        self.assertTrue((ROOT / "deploy" / "validate_deployed.sh").is_file())
 
 
 class ServerTests(unittest.TestCase):
@@ -76,11 +77,25 @@ class ServerTests(unittest.TestCase):
         service_ids = {service["id"] for service in json.loads(body)["services"]}
         self.assertTrue({"winlink", "aprs", "adsb", "uat", "noaa", "airband"} <= service_ids)
 
+    def test_system_api_has_resources_tooling_and_hardware_boundaries(self) -> None:
+        status, media_type, body = self.get("/api/system")
+        payload = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(media_type, "application/json")
+        self.assertTrue(payload["host"]["hostname"])
+        self.assertGreater(payload["resources"]["disk"]["total_bytes"], 0)
+        self.assertIn("direwolf", payload["tooling"]["commands"])
+        self.assertIn(payload["hardware"]["state"], {"bare-server", "devices-present"})
+        self.assertIsInstance(payload["hardware"]["serial_by_id"], list)
+        self.assertIsInstance(payload["hardware"]["alsa_cards"], list)
+        self.assertIsInstance(payload["hardware"]["usb_audio_cards"], list)
+
     def test_dashboard_and_assets_are_served(self) -> None:
         status, media_type, body = self.get("/")
         self.assertEqual(status, 200)
         self.assertEqual(media_type, "text/html")
         self.assertIn(b"Radio Operations Center", body)
+        self.assertIn(b"System readiness", body)
         self.assertEqual(self.get("/styles.css")[0], 200)
         self.assertEqual(self.get("/app.js")[0], 200)
 

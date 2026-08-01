@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from . import __version__
 from .config import load_station_config, transmit_interlock
 from .inventory import SERVICES
+from .system_status import collect_system_status
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +39,9 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/services":
             self._json({"services": SERVICES})
+            return
+        if route == "/api/system":
+            self._json(collect_system_status())
             return
         self._static(route)
 

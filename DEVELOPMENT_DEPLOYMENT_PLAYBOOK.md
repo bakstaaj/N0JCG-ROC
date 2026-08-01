@@ -40,6 +40,15 @@ Run work in this order:
    interlock from the development host.
 8. Preserve an exact, application-specific rollback path.
 
+The final served-state gate is:
+
+```bash
+./deploy/validate_deployed.sh
+```
+
+It compares served HTML and JavaScript hashes with local source, validates live
+API invariants, and verifies the ROC systemd service and failed-unit state.
+
 ## Credentials
 
 Use `deploy/setup_server_auth.sh` to install a project-specific Ed25519 key.
