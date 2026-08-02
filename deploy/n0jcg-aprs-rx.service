@@ -13,9 +13,6 @@ Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/home/n0jcg/sdrdev/N0JCG-ROC/runtime/aprs
 
 [Install]
 WantedBy=multi-user.target
