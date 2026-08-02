@@ -157,6 +157,9 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         request = Request(endpoint, data=body, method=method, headers=request_headers)
         try:
             with urlopen(request, timeout=10) as response:
+                if prefix == "/pi-scanner/audio-api":
+                    self._stream_proxy_response(response)
+                    return
                 content = response.read()
                 content_type = response.headers.get("Content-Type", "application/octet-stream")
                 self.send_response(response.status)
@@ -172,6 +175,24 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             self._json({"error": f"remote Air Traffic API returned {error.code}"}, HTTPStatus.BAD_GATEWAY)
         except (OSError, URLError) as error:
             self._json({"error": f"remote Air Traffic API unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
+
+    def _stream_proxy_response(self, response: object) -> None:
+        """Forward a live audio response without buffering it in memory."""
+        self.send_response(response.status)
+        self.send_header("Content-Type", response.headers.get("Content-Type", "application/octet-stream"))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        for name, value in response.headers.items():
+            if name.lower().startswith("x-"):
+                self.send_header(name, value)
+        self.end_headers()
+        self.close_connection = True
+        while True:
+            chunk = response.read(16384)
+            if not chunk:
+                break
+            self.wfile.write(chunk)
+            self.wfile.flush()
 
     def _static(self, route: str) -> None:
         if route in {"/air-traffic", "/air-traffic/"}:
