@@ -51,6 +51,8 @@
           <article class="metric-card"><span>APRS listener</span><strong id="metric-aprs">—</strong><small id="metric-aprs-detail">—</small></article>
           <article class="metric-card"><span>APRS packets</span><strong id="metric-aprs-packets">—</strong><small id="metric-aprs-packets-detail">—</small></article>
           <article class="metric-card"><span>Latest APRS frame</span><strong id="metric-aprs-latest">—</strong><small id="metric-aprs-latest-detail">Waiting for a decoded packet</small></article>
+          <article class="metric-card"><span>Air Traffic PI</span><strong id="metric-air-traffic">—</strong><small id="metric-air-traffic-detail">Checking remote application</small></article>
+          <article class="metric-card"><span>Aircraft tracked</span><strong id="metric-aircraft">—</strong><small id="metric-aircraft-detail">Remote ADS-B/UAT data</small></article>
         </div>
       </section>
 
@@ -58,6 +60,13 @@
         <p class="eyebrow">Next controlled milestone</p>
         <h2>Receive first. Measure before transmitting.</h2>
         <p>Detect the DigiRig and SDR hardware, establish stable device ownership, bring up the APRS receive-only path, and survey candidate packet channels.</p>
+      </section>
+
+      <section class="next-step">
+        <p class="eyebrow">Remote application</p>
+        <h2>Air Traffic Tracker</h2>
+        <p>The PI continues to own the aviation SDRs and decoders. The ROC monitors its API without claiming those devices.</p>
+        <a id="air-traffic-link" href="http://192.168.68.137:8090/" target="_blank" rel="noopener">Open Air Traffic Tracker</a>
       </section>
     </main>
 

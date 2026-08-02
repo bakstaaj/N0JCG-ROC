@@ -54,16 +54,37 @@ function showAprs(aprs) {
   document.querySelector("#metric-aprs-latest-detail").textContent = aprs.last_packet ? "Frame received" : "Waiting for a decoded packet";
 }
 
+function showAirTraffic(status) {
+  const state = document.querySelector("#metric-air-traffic");
+  const detail = document.querySelector("#metric-air-traffic-detail");
+  const aircraft = document.querySelector("#metric-aircraft");
+  const aircraftDetail = document.querySelector("#metric-aircraft-detail");
+  const link = document.querySelector("#air-traffic-link");
+  if (status.reachable) {
+    state.textContent = "Online";
+    detail.textContent = `PI API ${status.url}`;
+    aircraft.textContent = String(status.aircraft_count ?? 0);
+    aircraftDetail.textContent = `${status.aircraft_with_position ?? 0} positioned`;
+  } else {
+    state.textContent = "Offline";
+    detail.textContent = status.error || "PI API unavailable";
+    aircraft.textContent = "—";
+    aircraftDetail.textContent = "No remote data";
+  }
+  if (link && status.url) link.href = `${status.url}/`;
+}
+
 async function start() {
   try {
-    const [healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse] = await Promise.all([
+    const [healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse, airTrafficResponse] = await Promise.all([
       fetch("/api/health"),
       fetch("/api/station"),
       fetch("/api/services"),
       fetch("/api/system"),
       fetch("/api/aprs"),
+      fetch("/api/air-traffic/status"),
     ]);
-    if (![healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse].every((response) => response.ok)) {
+    if (![healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse, airTrafficResponse].every((response) => response.ok)) {
       throw new Error("API response failed");
     }
     const health = await healthResponse.json();
@@ -71,6 +92,7 @@ async function start() {
     const inventory = await servicesResponse.json();
     const system = await systemResponse.json();
     const aprs = await aprsResponse.json();
+    const airTraffic = await airTrafficResponse.json();
 
     badge.textContent = "Foundation online";
     badge.className = "badge ok";
@@ -83,6 +105,7 @@ async function start() {
     inventory.services.forEach((service) => serviceGrid.appendChild(serviceCard(service)));
     showSystem(system);
     showAprs(aprs);
+    showAirTraffic(airTraffic);
   } catch (error) {
     badge.textContent = "Service unavailable";
     console.error(error);

@@ -134,6 +134,15 @@ class ServerTests(unittest.TestCase):
         self.assertIn("packets", payload)
         self.assertIn("last_packet", payload)
 
+    def test_air_traffic_status_reports_remote_contract(self) -> None:
+        status, media_type, body = self.get("/api/air-traffic/status")
+        payload = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(media_type, "application/json")
+        self.assertTrue(payload["configured"])
+        self.assertIn("reachable", payload)
+        self.assertIn("url", payload)
+
     def test_aprs_frame_parser_ignores_listener_noise(self) -> None:
         frames = parse_aprs_frames([
             "Dire Wolf version 1.7",

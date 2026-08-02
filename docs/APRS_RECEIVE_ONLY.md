@@ -28,3 +28,11 @@ Before any future local test:
 
 APRS-IS uplink, digipeating, beacons, PTT, and Winlink remain disabled until
 their own safety and coordination checks are complete.
+
+## Diagnostic audio capture
+
+The listener can retain a bounded rolling capture while forwarding the same
+audio to Dire Wolf. The deployed service keeps the most recent 60 seconds in
+`runtime/aprs/audio-ring.wav`; this helps check whether AFSK audio is arriving
+when a packet is not decoded. It does not transmit or change the receive
+frequency. Set `APRS_AUDIO_CAPTURE=0` to disable it.

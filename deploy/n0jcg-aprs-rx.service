@@ -9,6 +9,8 @@ User=n0jcg
 Group=n0jcg
 WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
 Environment=RTL_GAIN_DB=49.6
+Environment=APRS_AUDIO_CAPTURE=1
+Environment=APRS_AUDIO_CAPTURE_SECONDS=60
 ExecStart=/home/n0jcg/sdrdev/N0JCG-ROC/tools/aprs_listener.sh
 Restart=on-failure
 RestartSec=5

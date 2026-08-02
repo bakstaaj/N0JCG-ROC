@@ -5,8 +5,11 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
+import os
 from pathlib import Path
 import re
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 
 from . import __version__
@@ -20,6 +23,7 @@ DEFAULT_WEB_ROOT = PROJECT_ROOT / "web"
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "station.toml"
 APRS_LOG_PATH = PROJECT_ROOT / "runtime" / "aprs" / "packets.log"
 APRS_FRAME_PATTERN = re.compile(r"^(?:\[[^\]]+\]\s*)?[A-Z0-9][A-Z0-9-]{1,8}>[^:]+:.+$")
+AIR_TRAFFIC_REMOTE_URL = os.environ.get("ROC_AIR_TRAFFIC_URL", "http://192.168.68.137:8090")
 
 
 def parse_aprs_frames(lines: list[str]) -> list[str]:
@@ -51,6 +55,26 @@ def collect_aprs_status() -> dict:
     }
 
 
+def collect_air_traffic_status() -> dict:
+    endpoint = f"{AIR_TRAFFIC_REMOTE_URL.rstrip('/')}/api/status"
+    try:
+        request = Request(endpoint, headers={"Accept": "application/json"})
+        with urlopen(request, timeout=2) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return {
+            "configured": True,
+            "reachable": True,
+            "url": AIR_TRAFFIC_REMOTE_URL,
+            "aircraft_count": payload.get("aircraft_count"),
+            "aircraft_with_position": payload.get("aircraft_with_position"),
+            "messages": payload.get("messages"),
+            "receiver_roles": payload.get("receiver_roles"),
+            "decoder": payload.get("decoder"),
+        }
+    except (OSError, URLError, ValueError, TypeError) as error:
+        return {"configured": True, "reachable": False, "url": AIR_TRAFFIC_REMOTE_URL, "error": str(error)}
+
+
 class RocRequestHandler(BaseHTTPRequestHandler):
     server_version = f"N0JCG-ROC/{__version__}"
 
@@ -77,6 +101,9 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/aprs":
             self._json(collect_aprs_status())
+            return
+        if route == "/api/air-traffic/status":
+            self._json(collect_air_traffic_status())
             return
         self._static(route)
 
