@@ -56,6 +56,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("MYCALL N0JCG-5", aprs)
         self.assertIn("MODEM 1200", aprs)
         self.assertNotIn("ADEVICE", aprs_directives.upper())
+        self.assertNotIn("AGWPORT", aprs_directives.upper())
+        self.assertNotIn("KISSPORT", aprs_directives.upper())
         self.assertNotIn("PTT", aprs_directives.upper())
         self.assertNotIn("IGSERVER", aprs_directives.upper())
         self.assertNotIn("DIGIPEAT", aprs_directives.upper())
