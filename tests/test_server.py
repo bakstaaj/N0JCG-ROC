@@ -51,6 +51,13 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("rtl_fm", receive)
         self.assertNotIn("direwolf", receive.lower())
         self.assertNotIn("systemctl", receive.lower())
+        aprs = (ROOT / "config" / "direwolf.aprs-rx.example.conf").read_text(encoding="utf-8")
+        aprs_directives = "\n".join(line for line in aprs.splitlines() if not line.lstrip().startswith("#"))
+        self.assertIn("MYCALL N0JCG-5", aprs)
+        self.assertIn("ADEVICE plughw:CARD=Device,DEV=0", aprs)
+        self.assertNotIn("PTT", aprs_directives.upper())
+        self.assertNotIn("IGSERVER", aprs_directives.upper())
+        self.assertNotIn("DIGIPEAT", aprs_directives.upper())
 
 
 class ServerTests(unittest.TestCase):
