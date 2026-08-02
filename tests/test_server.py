@@ -129,6 +129,8 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(payload["configured"])
         self.assertIn("active", payload)
         self.assertIsInstance(payload["packet_count"], int)
+        self.assertIn("packets", payload)
+        self.assertIn("last_packet", payload)
 
     def test_missing_asset_returns_404(self) -> None:
         with self.assertRaises(HTTPError) as caught:
