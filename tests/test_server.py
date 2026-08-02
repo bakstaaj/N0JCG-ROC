@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from n0jcg_roc.config import DEFAULT_CONFIG, transmit_interlock  # noqa: E402
-from n0jcg_roc.server import create_server  # noqa: E402
+from n0jcg_roc.server import create_server, parse_aprs_frames  # noqa: E402
 
 
 class SafetyTests(unittest.TestCase):
@@ -132,6 +132,14 @@ class ServerTests(unittest.TestCase):
         self.assertIsInstance(payload["packet_count"], int)
         self.assertIn("packets", payload)
         self.assertIn("last_packet", payload)
+
+    def test_aprs_frame_parser_ignores_listener_noise(self) -> None:
+        frames = parse_aprs_frames([
+            "Dire Wolf version 1.7",
+            "N0CALL>APRS,WIDE1-1:!3900.00N/10500.00W-Test",
+            "Ready to accept KISS TCP client application 0 on port 8001 ...",
+        ])
+        self.assertEqual(frames, ["N0CALL>APRS,WIDE1-1:!3900.00N/10500.00W-Test"])
 
     def test_missing_asset_returns_404(self) -> None:
         with self.assertRaises(HTTPError) as caught:

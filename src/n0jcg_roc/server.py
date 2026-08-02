@@ -22,12 +22,16 @@ APRS_LOG_PATH = PROJECT_ROOT / "runtime" / "aprs" / "packets.log"
 APRS_FRAME_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9-]{1,8}>[^:]+:.+$")
 
 
+def parse_aprs_frames(lines: list[str]) -> list[str]:
+    return [line.strip() for line in lines if APRS_FRAME_PATTERN.match(line.strip())]
+
+
 def collect_aprs_status() -> dict:
     try:
         lines = APRS_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         lines = []
-    frames = [line for line in lines if APRS_FRAME_PATTERN.match(line.strip())]
+    frames = parse_aprs_frames(lines)
     active = False
     for proc in Path("/proc").glob("[0-9]*"):
         try:
