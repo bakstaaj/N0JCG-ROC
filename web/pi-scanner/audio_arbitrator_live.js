@@ -5,7 +5,11 @@
   const SAMPLE_RATE = 8000;
   const FRAME_SAMPLES = 160;
   const FRAME_BYTES = FRAME_SAMPLES * 2;
-  const MAX_QUEUED_SECONDS = 0.35;
+  // The arbitrator emits approximately one second of PCM per network read.
+  // Keep several seconds scheduled ahead so normal network/read jitter does
+  // not turn each upstream chunk into an audible start/stop segment.
+  const MAX_QUEUED_SECONDS = 3.0;
+  const PREBUFFER_BYTES = 16384 * 2;
 
   let context = null;
   let gainNode = null;
@@ -14,6 +18,7 @@
   let stopping = false;
   let nextPlayTime = 0;
   let pending = new Uint8Array(0);
+  let playbackPrimed = false;
 
   const field = (id) => document.getElementById(id);
 
@@ -115,6 +120,7 @@
     stopping = false;
     pending = new Uint8Array(0);
     nextPlayTime = 0;
+    playbackPrimed = false;
 
     stopNativeWavPlayer();
     await ensureContext();
@@ -140,6 +146,9 @@
 
       pending = appendBytes(pending, result.value);
 
+      if (!playbackPrimed && pending.length < PREBUFFER_BYTES) continue;
+      playbackPrimed = true;
+
       while (pending.length >= FRAME_BYTES) {
         const frame = pending.slice(0, FRAME_BYTES);
         pending = pending.slice(FRAME_BYTES);
@@ -164,6 +173,7 @@
     reader = null;
     pending = new Uint8Array(0);
     nextPlayTime = 0;
+    playbackPrimed = false;
     setStatus('Scanner audio stopped');
   }
 
