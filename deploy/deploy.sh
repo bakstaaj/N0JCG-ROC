@@ -63,7 +63,7 @@ rsync -az --delete \
 
 "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "cd ${ROC_REMOTE_DIR} && if [ ! -f config/station.toml ]; then cp config/station.example.toml config/station.toml; fi && chmod +x tools/*.sh deploy/*.sh && ./tools/validate.sh"
 printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' systemctl restart n0jcg-roc.service"
-printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-aprs-rx.service /etc/systemd/system/n0jcg-aprs-rx.service && systemctl daemon-reload && systemctl enable --now n0jcg-aprs-rx.service'"
+printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-aprs-rx.service /etc/systemd/system/n0jcg-aprs-rx.service && systemctl daemon-reload && systemctl enable n0jcg-aprs-rx.service && systemctl restart n0jcg-aprs-rx.service'"
 "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "systemctl is-enabled --quiet n0jcg-roc.service && systemctl is-active --quiet n0jcg-roc.service && curl -fsS http://127.0.0.1:${ROC_PORT}/api/health"
 
 curl -fsS "http://${ROC_HOST}:${ROC_PORT}/" | grep -Fq 'Radio Operations Center'
