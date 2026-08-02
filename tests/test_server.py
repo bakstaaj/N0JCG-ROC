@@ -117,8 +117,17 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(media_type, "text/html")
         self.assertIn(b"Radio Operations Center", body)
         self.assertIn(b"System readiness", body)
+        self.assertIn(b"APRS listener", body)
         self.assertEqual(self.get("/styles.css")[0], 200)
         self.assertEqual(self.get("/app.js")[0], 200)
+
+    def test_aprs_api_reports_receive_status(self) -> None:
+        status, media_type, body = self.get("/api/aprs")
+        payload = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(media_type, "application/json")
+        self.assertTrue(payload["configured"])
+        self.assertIsInstance(payload["packet_count"], int)
 
     def test_missing_asset_returns_404(self) -> None:
         with self.assertRaises(HTTPError) as caught:

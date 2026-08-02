@@ -44,21 +44,30 @@ function showSystem(system) {
   document.querySelector("#hardware-state").textContent = system.hardware.state === "bare-server" ? "Bare server ready" : "Devices present";
 }
 
+function showAprs(aprs) {
+  document.querySelector("#metric-aprs").textContent = aprs.configured ? "Configured" : "Not configured";
+  document.querySelector("#metric-aprs-detail").textContent = "RTL-SDR receive-only path";
+  document.querySelector("#metric-aprs-packets").textContent = String(aprs.packet_count ?? 0);
+  document.querySelector("#metric-aprs-packets-detail").textContent = aprs.packet_count ? "Decoded frames" : "No decoded frames yet";
+}
+
 async function start() {
   try {
-    const [healthResponse, stationResponse, servicesResponse, systemResponse] = await Promise.all([
+    const [healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse] = await Promise.all([
       fetch("/api/health"),
       fetch("/api/station"),
       fetch("/api/services"),
       fetch("/api/system"),
+      fetch("/api/aprs"),
     ]);
-    if (![healthResponse, stationResponse, servicesResponse, systemResponse].every((response) => response.ok)) {
+    if (![healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse].every((response) => response.ok)) {
       throw new Error("API response failed");
     }
     const health = await healthResponse.json();
     const station = await stationResponse.json();
     const inventory = await servicesResponse.json();
     const system = await systemResponse.json();
+    const aprs = await aprsResponse.json();
 
     badge.textContent = "Foundation online";
     badge.className = "badge ok";
@@ -70,6 +79,7 @@ async function start() {
     interlock.querySelector("small").textContent = reasons || "All configured safety gates passed";
     inventory.services.forEach((service) => serviceGrid.appendChild(serviceCard(service)));
     showSystem(system);
+    showAprs(aprs);
   } catch (error) {
     badge.textContent = "Service unavailable";
     console.error(error);
