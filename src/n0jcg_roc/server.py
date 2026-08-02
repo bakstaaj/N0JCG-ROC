@@ -26,7 +26,16 @@ def collect_aprs_status() -> dict:
     except OSError:
         lines = []
     frames = [line for line in lines if ">" in line and not line.startswith("Ready")]
-    return {"configured": True, "packet_count": len(frames), "recent": lines[-20:]}
+    active = False
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            command = (proc / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore")
+        except OSError:
+            continue
+        if "rtl_fm" in command and "00000144" in command:
+            active = True
+            break
+    return {"configured": True, "active": active, "packet_count": len(frames), "recent": lines[-20:]}
 
 
 class RocRequestHandler(BaseHTTPRequestHandler):

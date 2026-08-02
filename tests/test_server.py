@@ -127,6 +127,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(media_type, "application/json")
         self.assertTrue(payload["configured"])
+        self.assertIn("active", payload)
         self.assertIsInstance(payload["packet_count"], int)
 
     def test_missing_asset_returns_404(self) -> None:

@@ -45,8 +45,8 @@ function showSystem(system) {
 }
 
 function showAprs(aprs) {
-  document.querySelector("#metric-aprs").textContent = aprs.configured ? "Configured" : "Not configured";
-  document.querySelector("#metric-aprs-detail").textContent = "RTL-SDR receive-only path";
+  document.querySelector("#metric-aprs").textContent = aprs.active ? "Active" : (aprs.configured ? "Stopped" : "Not configured");
+  document.querySelector("#metric-aprs-detail").textContent = aprs.active ? "RTL-SDR receive-only path" : "Listener not running";
   document.querySelector("#metric-aprs-packets").textContent = String(aprs.packet_count ?? 0);
   document.querySelector("#metric-aprs-packets-detail").textContent = aprs.packet_count ? "Decoded frames" : "No decoded frames yet";
 }
