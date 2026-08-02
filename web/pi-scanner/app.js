@@ -215,6 +215,12 @@ async function startScannerAndAudio() {
     return;
   }
 
+  const startBtn = field('startBtn');
+  const stopBtn = field('stopBtn');
+  if (startBtn) startBtn.disabled = true;
+  if (stopBtn) stopBtn.disabled = true;
+  setText('lastEvent', 'Starting P25, VHF, and UHF scanners...');
+
   const audio = field('browserAudioPlayer');
   if (audio) audio.src = audioStreamUrl();
   const playPromise = audio ? audio.play().catch((error) => { updateAudioPanel(`Press audio play if blocked: ${error.message}`); return false; }) : Promise.resolve(false);
@@ -231,6 +237,12 @@ async function startScannerAndAudio() {
 }
 
 async function stopScanner() {
+  const startBtn = field('startBtn');
+  const stopBtn = field('stopBtn');
+  if (startBtn) startBtn.disabled = true;
+  if (stopBtn) stopBtn.disabled = true;
+  setText('lastEvent', 'Stopping P25, VHF, and UHF scanners...');
+
   const audio = field('browserAudioPlayer');
   if (audio) { audio.pause(); audio.src = audioStreamUrl(); }
   updateAudioPanel('Stopping P25, VHF, UHF, and browser audio');
@@ -1077,7 +1089,7 @@ function p25RemoveDashboardAutostartTuningRemnants() {
     }
 
     try {
-      const audioResponse = await fetch(`/pi-scanner/audio-api/api/audio/status`, {cache:'no-store', mode:'cors'});
+      const audioResponse = await fetch(`/pi-scanner/audio-api/audio/status`, {cache:'no-store', mode:'cors'});
       if (!audioResponse.ok) throw new Error(`audio HTTP ${audioResponse.status}`);
       const audio = await audioResponse.json();
       audioReachable = Boolean(audio?.ok);
@@ -1152,7 +1164,7 @@ function p25RemoveDashboardAutostartTuningRemnants() {
 
     try {
       const audioStatus = await fetchJson(
-        `/pi-scanner/audio-api/api/audio/status`
+        `/pi-scanner/audio-api/audio/status`
       );
       const role = analogRoleForSource(audioStatus?.active_source);
 
@@ -1455,7 +1467,7 @@ function p25RemoveDashboardAutostartTuningRemnants() {
         controlsPayload,
       ] = await Promise.all([
         fetchJson(
-          `/pi-scanner/audio-api/api/audio/status`
+          `/pi-scanner/audio-api/audio/status`
         ),
         fetchJson('/pi-scanner/api/analog/status'),
         fetchJson('/pi-scanner/api/analog/controls'),

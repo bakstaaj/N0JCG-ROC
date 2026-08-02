@@ -120,7 +120,7 @@
     await ensureContext();
 
     const response = await fetch(
-      `/pi-scanner/audio-api/audio.pcm?_=${Date.now()}`,
+      `http://${window.location.hostname}:8072/audio.pcm?_=${Date.now()}`,
       {
         cache: 'no-store',
         mode: 'cors'

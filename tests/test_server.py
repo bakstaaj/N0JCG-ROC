@@ -127,7 +127,7 @@ class ServerTests(unittest.TestCase):
         status, media_type, body = self.get("/air-traffic/")
         self.assertEqual(status, 200)
         self.assertEqual(media_type, "text/html")
-        self.assertIn(b"RTL ADS-B Tracker", body)
+        self.assertIn(b"N0JCG AIR TRAFFIC CENTER", body)
         self.assertEqual(self.get("/air-traffic/app.js")[0], 200)
         self.assertEqual(self.get("/air-traffic/app.css")[0], 200)
 
