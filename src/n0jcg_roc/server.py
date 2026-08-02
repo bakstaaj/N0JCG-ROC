@@ -8,7 +8,7 @@ import mimetypes
 import os
 from pathlib import Path
 import re
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 
@@ -80,6 +80,9 @@ class RocRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - standard library handler API
         route = urlparse(self.path).path
+        if route.startswith("/air-traffic/api/"):
+            self._proxy_air_traffic("GET")
+            return
         if route == "/api/health":
             self._json(
                 {
@@ -107,6 +110,12 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             return
         self._static(route)
 
+    def do_POST(self) -> None:  # noqa: N802 - standard library handler API
+        if urlparse(self.path).path.startswith("/air-traffic/api/"):
+            self._proxy_air_traffic("POST")
+            return
+        self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+
     def log_message(self, format: str, *args: object) -> None:
         print(f"{self.address_string()} - {format % args}")
 
@@ -119,8 +128,34 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def _proxy_air_traffic(self, method: str) -> None:
+        remote_path = self.path[len("/air-traffic") :]
+        endpoint = f"{AIR_TRAFFIC_REMOTE_URL.rstrip('/')}{remote_path}"
+        body = None
+        if method == "POST":
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length)
+        request = Request(endpoint, data=body, method=method, headers={"Accept": self.headers.get("Accept", "*/*")})
+        try:
+            with urlopen(request, timeout=10) as response:
+                content = response.read()
+                content_type = response.headers.get("Content-Type", "application/octet-stream")
+                self.send_response(response.status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+        except HTTPError as error:
+            self._json({"error": f"remote Air Traffic API returned {error.code}"}, HTTPStatus.BAD_GATEWAY)
+        except (OSError, URLError) as error:
+            self._json({"error": f"remote Air Traffic API unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
+
     def _static(self, route: str) -> None:
-        relative = "index.html" if route == "/" else route.lstrip("/")
+        if route in {"/air-traffic", "/air-traffic/"}:
+            relative = "air-traffic/index.html"
+        else:
+            relative = "index.html" if route == "/" else route.lstrip("/")
         candidate = (self.server.web_root / relative).resolve()
         try:
             candidate.relative_to(self.server.web_root.resolve())

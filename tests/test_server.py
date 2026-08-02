@@ -123,6 +123,14 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.get("/styles.css")[0], 200)
         self.assertEqual(self.get("/app.js")[0], 200)
 
+    def test_air_traffic_application_is_served_locally(self) -> None:
+        status, media_type, body = self.get("/air-traffic/")
+        self.assertEqual(status, 200)
+        self.assertEqual(media_type, "text/html")
+        self.assertIn(b"RTL ADS-B Tracker", body)
+        self.assertEqual(self.get("/air-traffic/app.js")[0], 200)
+        self.assertEqual(self.get("/air-traffic/app.css")[0], 200)
+
     def test_aprs_api_reports_receive_status(self) -> None:
         status, media_type, body = self.get("/api/aprs")
         payload = json.loads(body)
