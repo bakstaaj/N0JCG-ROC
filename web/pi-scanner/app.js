@@ -1089,7 +1089,7 @@ function p25RemoveDashboardAutostartTuningRemnants() {
     }
 
     try {
-      const audioResponse = await fetch(`/pi-scanner/audio-api/audio/status`, {cache:'no-store', mode:'cors'});
+      const audioResponse = await fetch(`/pi-scanner/audio-api/api/audio/status`, {cache:'no-store', mode:'cors'});
       if (!audioResponse.ok) throw new Error(`audio HTTP ${audioResponse.status}`);
       const audio = await audioResponse.json();
       audioReachable = Boolean(audio?.ok);
@@ -1164,7 +1164,7 @@ function p25RemoveDashboardAutostartTuningRemnants() {
 
     try {
       const audioStatus = await fetchJson(
-        `/pi-scanner/audio-api/audio/status`
+        `/pi-scanner/audio-api/api/audio/status`
       );
       const role = analogRoleForSource(audioStatus?.active_source);
 
@@ -1467,7 +1467,7 @@ function p25RemoveDashboardAutostartTuningRemnants() {
         controlsPayload,
       ] = await Promise.all([
         fetchJson(
-          `/pi-scanner/audio-api/audio/status`
+          `/pi-scanner/audio-api/api/audio/status`
         ),
         fetchJson('/pi-scanner/api/analog/status'),
         fetchJson('/pi-scanner/api/analog/controls'),
