@@ -21,7 +21,7 @@ SERVICES = [
         "phase": 1,
         "state": "external-node",
         "rf_role": "receive-only",
-        "hardware": "PI-AIR-TRAFFIC-TRACKER node",
+        "hardware": "N0JCG Air Traffic node",
     },
     {
         "id": "uat",
@@ -29,7 +29,7 @@ SERVICES = [
         "phase": 1,
         "state": "external-node",
         "rf_role": "receive-only",
-        "hardware": "PI-AIR-TRAFFIC-TRACKER node",
+        "hardware": "N0JCG Air Traffic node",
     },
     {
         "id": "noaa",
@@ -37,7 +37,7 @@ SERVICES = [
         "phase": 1,
         "state": "external-node",
         "rf_role": "receive-only",
-        "hardware": "PI-AIR-TRAFFIC-TRACKER node",
+        "hardware": "N0JCG Air Traffic node",
     },
     {
         "id": "airband",
@@ -45,7 +45,7 @@ SERVICES = [
         "phase": 1,
         "state": "external-node",
         "rf_role": "receive-only",
-        "hardware": "PI-AIR-TRAFFIC-TRACKER node",
+        "hardware": "N0JCG Air Traffic node",
     },
     {
         "id": "scanner",
@@ -53,7 +53,7 @@ SERVICES = [
         "phase": 2,
         "state": "external-node",
         "rf_role": "receive-only",
-        "hardware": "PI-SCANNER node",
+        "hardware": "N0JCG Scanner node",
     },
     {
         "id": "planning",

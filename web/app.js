@@ -62,12 +62,12 @@ function showAirTraffic(status) {
   const link = document.querySelector("#air-traffic-link");
   if (status.reachable) {
     state.textContent = "Online";
-    detail.textContent = `PI API ${status.url}`;
+    detail.textContent = `N0JCG Air Traffic API ${status.url}`;
     aircraft.textContent = String(status.aircraft_count ?? 0);
     aircraftDetail.textContent = `${status.aircraft_with_position ?? 0} positioned`;
   } else {
     state.textContent = "Offline";
-    detail.textContent = status.error || "PI API unavailable";
+    detail.textContent = status.error || "N0JCG Air Traffic API unavailable";
     aircraft.textContent = "—";
     aircraftDetail.textContent = "No remote data";
   }

@@ -155,7 +155,7 @@ class ServerTests(unittest.TestCase):
         status, media_type, body = self.get("/pi-scanner/")
         self.assertEqual(status, 200)
         self.assertEqual(media_type, "text/html")
-        self.assertIn(b"PI Scanner", body)
+        self.assertIn(b"N0JCG SCANNER", body)
         self.assertEqual(self.get("/pi-scanner/app.js")[0], 200)
         self.assertEqual(self.get("/pi-scanner/app.css")[0], 200)
         self.assertEqual(self.get("/pi-scanner/audio_arbitrator_live.js")[0], 200)
