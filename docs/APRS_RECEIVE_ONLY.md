@@ -9,7 +9,7 @@ for the future Winlink/packet-radio path. The planned receive pipeline is:
 
 ```bash
 rtl_fm -d 0 -f 144390000 -M fm -s 240000 -r 48000 -g 0 - \
-  | direwolf -c config/direwolf.aprs-rx.example.conf -
+  | direwolf -r 48000 -c config/direwolf.aprs-rx.example.conf -
 ```
 
 The RTL EEPROM serial (`00000144`) must be resolved before replacing `-d 0`
