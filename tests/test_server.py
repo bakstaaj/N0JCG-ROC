@@ -151,6 +151,14 @@ class ServerTests(unittest.TestCase):
         self.assertIn("reachable", payload)
         self.assertIn("url", payload)
 
+    def test_pi_scanner_application_is_served_locally(self) -> None:
+        status, media_type, body = self.get("/pi-scanner/")
+        self.assertEqual(status, 200)
+        self.assertEqual(media_type, "text/html")
+        self.assertIn(b"PI Scanner", body)
+        self.assertEqual(self.get("/pi-scanner/app.js")[0], 200)
+        self.assertEqual(self.get("/pi-scanner/app.css")[0], 200)
+
     def test_aprs_frame_parser_ignores_listener_noise(self) -> None:
         frames = parse_aprs_frames([
             "Dire Wolf version 1.7",

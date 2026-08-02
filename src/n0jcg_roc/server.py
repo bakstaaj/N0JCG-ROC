@@ -24,6 +24,8 @@ DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "station.toml"
 APRS_LOG_PATH = PROJECT_ROOT / "runtime" / "aprs" / "packets.log"
 APRS_FRAME_PATTERN = re.compile(r"^(?:\[[^\]]+\]\s*)?[A-Z0-9][A-Z0-9-]{1,8}>[^:]+:.+$")
 AIR_TRAFFIC_REMOTE_URL = os.environ.get("ROC_AIR_TRAFFIC_URL", "http://192.168.68.137:8090")
+PI_SCANNER_REMOTE_URL = os.environ.get("ROC_PI_SCANNER_URL", "http://192.168.68.137:8070")
+PI_SCANNER_AUDIO_URL = os.environ.get("ROC_PI_SCANNER_AUDIO_URL", "http://192.168.68.137:8072")
 
 
 def parse_aprs_frames(lines: list[str]) -> list[str]:
@@ -83,6 +85,12 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if route.startswith("/air-traffic/api/"):
             self._proxy_air_traffic("GET")
             return
+        if route.startswith("/pi-scanner/api/"):
+            self._proxy_path("/pi-scanner", PI_SCANNER_REMOTE_URL, "GET")
+            return
+        if route.startswith("/pi-scanner/audio-api/"):
+            self._proxy_path("/pi-scanner/audio-api", PI_SCANNER_AUDIO_URL, "GET")
+            return
         if route == "/api/health":
             self._json(
                 {
@@ -114,6 +122,9 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if urlparse(self.path).path.startswith("/air-traffic/api/"):
             self._proxy_air_traffic("POST")
             return
+        if urlparse(self.path).path.startswith("/pi-scanner/api/"):
+            self._proxy_path("/pi-scanner", PI_SCANNER_REMOTE_URL, "POST")
+            return
         self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def log_message(self, format: str, *args: object) -> None:
@@ -129,8 +140,11 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _proxy_air_traffic(self, method: str) -> None:
-        remote_path = self.path[len("/air-traffic") :]
-        endpoint = f"{AIR_TRAFFIC_REMOTE_URL.rstrip('/')}{remote_path}"
+        self._proxy_path("/air-traffic", AIR_TRAFFIC_REMOTE_URL, method)
+
+    def _proxy_path(self, prefix: str, remote_base: str, method: str) -> None:
+        remote_path = self.path[len(prefix) :]
+        endpoint = f"{remote_base.rstrip('/')}{remote_path}"
         body = None
         if method == "POST":
             length = int(self.headers.get("Content-Length", "0"))
@@ -162,6 +176,8 @@ class RocRequestHandler(BaseHTTPRequestHandler):
     def _static(self, route: str) -> None:
         if route in {"/air-traffic", "/air-traffic/"}:
             relative = "air-traffic/index.html"
+        elif route in {"/pi-scanner", "/pi-scanner/"}:
+            relative = "pi-scanner/index.html"
         else:
             relative = "index.html" if route == "/" else route.lstrip("/")
         candidate = (self.server.web_root / relative).resolve()
