@@ -135,7 +135,12 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if method == "POST":
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length)
-        request = Request(endpoint, data=body, method=method, headers={"Accept": self.headers.get("Accept", "*/*")})
+        request_headers = {"Accept": self.headers.get("Accept", "*/*")}
+        for name in ("Content-Type", "X-PI-Audio-Stop-Guard"):
+            value = self.headers.get(name)
+            if value:
+                request_headers[name] = value
+        request = Request(endpoint, data=body, method=method, headers=request_headers)
         try:
             with urlopen(request, timeout=10) as response:
                 content = response.read()
@@ -143,6 +148,9 @@ class RocRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(response.status)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Cache-Control", "no-store")
+                for name, value in response.headers.items():
+                    if name.lower().startswith("x-"):
+                        self.send_header(name, value)
                 self.send_header("Content-Length", str(len(content)))
                 self.end_headers()
                 self.wfile.write(content)
