@@ -17,6 +17,16 @@ from .system_status import collect_system_status
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WEB_ROOT = PROJECT_ROOT / "web"
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "station.toml"
+APRS_LOG_PATH = PROJECT_ROOT / "runtime" / "aprs" / "packets.log"
+
+
+def collect_aprs_status() -> dict:
+    try:
+        lines = APRS_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        lines = []
+    frames = [line for line in lines if ">" in line and not line.startswith("Ready")]
+    return {"configured": True, "packet_count": len(frames), "recent": lines[-20:]}
 
 
 class RocRequestHandler(BaseHTTPRequestHandler):
@@ -42,6 +52,9 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/system":
             self._json(collect_system_status())
+            return
+        if route == "/api/aprs":
+            self._json(collect_aprs_status())
             return
         self._static(route)
 

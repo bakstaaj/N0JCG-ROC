@@ -1,0 +1,21 @@
+[Unit]
+Description=N0JCG APRS RTL-SDR receive-only listener
+After=sound.target n0jcg-roc.service
+Wants=sound.target
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
+ExecStart=/home/n0jcg/sdrdev/N0JCG-ROC/tools/aprs_listener.sh
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/n0jcg/sdrdev/N0JCG-ROC/runtime/aprs
+
+[Install]
+WantedBy=multi-user.target

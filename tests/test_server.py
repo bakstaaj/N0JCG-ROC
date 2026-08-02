@@ -61,6 +61,10 @@ class SafetyTests(unittest.TestCase):
         self.assertNotIn("PTT", aprs_directives.upper())
         self.assertNotIn("IGSERVER", aprs_directives.upper())
         self.assertNotIn("DIGIPEAT", aprs_directives.upper())
+        listener = (ROOT / "tools" / "aprs_listener.sh").read_text(encoding="utf-8")
+        self.assertIn("00000144", listener)
+        self.assertNotIn("PTT", listener.upper())
+        self.assertTrue((ROOT / "deploy" / "n0jcg-aprs-rx.service").is_file())
 
 
 class ServerTests(unittest.TestCase):
