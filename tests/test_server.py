@@ -138,9 +138,13 @@ class ServerTests(unittest.TestCase):
         frames = parse_aprs_frames([
             "Dire Wolf version 1.7",
             "N0CALL>APRS,WIDE1-1:!3900.00N/10500.00W-Test",
+            "[0.3] WB2OSZ-15>TEST:,The quick brown fox",
             "Ready to accept KISS TCP client application 0 on port 8001 ...",
         ])
-        self.assertEqual(frames, ["N0CALL>APRS,WIDE1-1:!3900.00N/10500.00W-Test"])
+        self.assertEqual(frames, [
+            "N0CALL>APRS,WIDE1-1:!3900.00N/10500.00W-Test",
+            "[0.3] WB2OSZ-15>TEST:,The quick brown fox",
+        ])
 
     def test_missing_asset_returns_404(self) -> None:
         with self.assertRaises(HTTPError) as caught:
