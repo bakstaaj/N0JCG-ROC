@@ -12,6 +12,8 @@ DEFAULT_CONFIG = {
         "linux_user": "n0jcg",
         "site_label": "Cripple Creek, Colorado",
         "grid_square": "DM78JT",
+        "latitude": 38.800788,
+        "longitude": -105.2001,
     },
     "server": {
         "hostname": "n0jcg-roc",

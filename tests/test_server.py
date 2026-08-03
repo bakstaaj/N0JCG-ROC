@@ -142,6 +142,16 @@ class ServerTests(unittest.TestCase):
         self.assertIn("packets", payload)
         self.assertIn("last_packet", payload)
 
+    def test_aprs_context_uses_station_location_and_pc_time(self) -> None:
+        status, media_type, body = self.get("/api/aprs/context")
+        payload = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(media_type, "application/json")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["latitude"], 38.800788)
+        self.assertEqual(payload["longitude"], -105.2001)
+        self.assertRegex(payload["utc"], r"^20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+
     def test_air_traffic_status_reports_remote_contract(self) -> None:
         status, media_type, body = self.get("/api/air-traffic/status")
         payload = json.loads(body)

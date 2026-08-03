@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 from urllib.error import HTTPError, URLError
@@ -103,6 +104,17 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/station":
             self._json(self.server.station_config)
+            return
+        if route == "/api/aprs/context":
+            station = self.server.station_config["station"]
+            self._json({
+                "ok": True,
+                "latitude": station["latitude"],
+                "longitude": station["longitude"],
+                "utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "callsign": station["callsign"],
+                "source": "N0JCG ROC connected PC",
+            })
             return
         if route == "/api/services":
             self._json({"services": SERVICES})
