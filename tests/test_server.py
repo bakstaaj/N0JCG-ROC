@@ -162,15 +162,15 @@ class ServerTests(unittest.TestCase):
         self.assertIn("url", payload)
 
     def test_pi_scanner_application_is_served_locally(self) -> None:
-        status, media_type, body = self.get("/pi-scanner/")
+        status, media_type, body = self.get("/n0jcg-scanner/")
         self.assertEqual(status, 200)
         self.assertEqual(media_type, "text/html")
         self.assertIn(b"N0JCG SCANNER", body)
-        self.assertEqual(self.get("/pi-scanner/app.js")[0], 200)
-        self.assertEqual(self.get("/pi-scanner/app.css")[0], 200)
-        self.assertEqual(self.get("/pi-scanner/audio_arbitrator_live.js")[0], 200)
-        self.assertEqual(self.get("/pi-scanner/chirp_analog_template.csv")[0], 200)
-        self.assertEqual(self.get("/pi-scanner/p25_import_template.csv")[0], 200)
+        self.assertEqual(self.get("/n0jcg-scanner/app.js")[0], 200)
+        self.assertEqual(self.get("/n0jcg-scanner/app.css")[0], 200)
+        self.assertEqual(self.get("/n0jcg-scanner/audio_arbitrator_live.js")[0], 200)
+        self.assertEqual(self.get("/n0jcg-scanner/chirp_analog_template.csv")[0], 200)
+        self.assertEqual(self.get("/n0jcg-scanner/p25_import_template.csv")[0], 200)
 
     def test_aprs_frame_parser_ignores_listener_noise(self) -> None:
         frames = parse_aprs_frames([

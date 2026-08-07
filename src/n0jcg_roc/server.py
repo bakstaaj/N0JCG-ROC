@@ -27,6 +27,7 @@ APRS_FRAME_PATTERN = re.compile(r"^(?:\[[^\]]+\]\s*)?[A-Z0-9][A-Z0-9-]{1,8}>[^:]
 AIR_TRAFFIC_REMOTE_URL = os.environ.get("ROC_AIR_TRAFFIC_URL", "http://192.168.68.137:8090")
 PI_SCANNER_REMOTE_URL = os.environ.get("ROC_PI_SCANNER_URL", "http://192.168.68.137:8070")
 PI_SCANNER_AUDIO_URL = os.environ.get("ROC_PI_SCANNER_AUDIO_URL", "http://192.168.68.137:8072")
+PI_SCANNER_BASE_PATH = os.environ.get("ROC_PI_SCANNER_BASE_PATH", "/n0jcg-scanner").rstrip("/") or "/n0jcg-scanner"
 
 
 def parse_aprs_frames(lines: list[str]) -> list[str]:
@@ -86,11 +87,11 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if route.startswith("/air-traffic/api/"):
             self._proxy_air_traffic("GET")
             return
-        if route.startswith("/pi-scanner/api/"):
-            self._proxy_path("/pi-scanner", PI_SCANNER_REMOTE_URL, "GET")
+        if route.startswith(f"{PI_SCANNER_BASE_PATH}/api/"):
+            self._proxy_path(PI_SCANNER_BASE_PATH, PI_SCANNER_REMOTE_URL, "GET")
             return
-        if route.startswith("/pi-scanner/audio-api/"):
-            self._proxy_path("/pi-scanner/audio-api", PI_SCANNER_AUDIO_URL, "GET")
+        if route.startswith(f"{PI_SCANNER_BASE_PATH}/audio-api/"):
+            self._proxy_path(f"{PI_SCANNER_BASE_PATH}/audio-api", PI_SCANNER_AUDIO_URL, "GET")
             return
         if route == "/api/health":
             self._json(
@@ -134,8 +135,8 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if urlparse(self.path).path.startswith("/air-traffic/api/"):
             self._proxy_air_traffic("POST")
             return
-        if urlparse(self.path).path.startswith("/pi-scanner/api/"):
-            self._proxy_path("/pi-scanner", PI_SCANNER_REMOTE_URL, "POST")
+        if urlparse(self.path).path.startswith(f"{PI_SCANNER_BASE_PATH}/api/"):
+            self._proxy_path(PI_SCANNER_BASE_PATH, PI_SCANNER_REMOTE_URL, "POST")
             return
         self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
@@ -209,8 +210,10 @@ class RocRequestHandler(BaseHTTPRequestHandler):
     def _static(self, route: str) -> None:
         if route in {"/air-traffic", "/air-traffic/"}:
             relative = "air-traffic/index.html"
-        elif route in {"/pi-scanner", "/pi-scanner/"}:
+        elif route in {PI_SCANNER_BASE_PATH, f"{PI_SCANNER_BASE_PATH}/"}:
             relative = "pi-scanner/index.html"
+        elif route.startswith(f"{PI_SCANNER_BASE_PATH}/"):
+            relative = f"pi-scanner/{route[len(PI_SCANNER_BASE_PATH) + 1:]}"
         else:
             relative = "index.html" if route == "/" else route.lstrip("/")
         candidate = (self.server.web_root / relative).resolve()
