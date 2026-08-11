@@ -6,6 +6,7 @@ import platform
 import shutil
 import socket
 import sys
+import threading
 
 
 REQUIRED_TOOLS = (
@@ -30,6 +31,9 @@ RTL_USB_IDS = {
     ("0bda", "2838"),
 }
 
+_CPU_SAMPLE_LOCK = threading.Lock()
+_CPU_SAMPLE: tuple[int, int] | None = None
+
 
 def _read_text(path: Path) -> str | None:
     try:
@@ -48,7 +52,7 @@ def _uptime_seconds() -> int | None:
         return None
 
 
-def _memory_status() -> dict[str, int | None]:
+def _memory_status() -> dict[str, int | float | None]:
     values: dict[str, int] = {}
     raw = _read_text(Path("/proc/meminfo"))
     if raw:
@@ -59,10 +63,69 @@ def _memory_status() -> dict[str, int | None]:
             fields = remainder.split()
             if fields and fields[0].isdigit():
                 values[name] = int(fields[0]) * 1024
-    return {
-        "total_bytes": values.get("MemTotal"),
-        "available_bytes": values.get("MemAvailable"),
-    }
+    total = values.get("MemTotal")
+    available = values.get("MemAvailable")
+    used = total - available if total is not None and available is not None else None
+    used_percent = round(used / total * 100, 1) if used is not None and total else None
+    return {"total_bytes": total, "available_bytes": available, "used_bytes": used, "used_percent": used_percent}
+
+
+def _cpu_status(load_1m: float | None) -> dict[str, int | float | None]:
+    global _CPU_SAMPLE
+    utilization = None
+    raw = _read_text(Path("/proc/stat"))
+    if raw:
+        fields = raw.splitlines()[0].split()
+        try:
+            values = [int(value) for value in fields[1:]]
+            idle = values[3] + (values[4] if len(values) > 4 else 0)
+            total = sum(values)
+            with _CPU_SAMPLE_LOCK:
+                previous = _CPU_SAMPLE
+                _CPU_SAMPLE = (idle, total)
+            if previous and total > previous[1]:
+                idle_delta = idle - previous[0]
+                total_delta = total - previous[1]
+                utilization = round(max(0.0, min(100.0, (1 - idle_delta / total_delta) * 100)), 1)
+        except (ValueError, IndexError, ZeroDivisionError):
+            pass
+    processors = os.cpu_count() or 1
+    if utilization is None and load_1m is not None:
+        utilization = round(max(0.0, min(100.0, load_1m / processors * 100)), 1)
+    return {"utilization_percent": utilization, "logical_processors": processors, "load_1m": load_1m}
+
+
+def _temperature_status() -> dict[str, str | float | None]:
+    candidates: list[tuple[int, str, float]] = []
+    for zone in Path("/sys/class/thermal").glob("thermal_zone*"):
+        raw = _read_text(zone / "temp")
+        if raw is None:
+            continue
+        try:
+            celsius = float(raw) / 1000
+        except ValueError:
+            continue
+        source = _read_text(zone / "type") or zone.name
+        priority = 0 if any(word in source.lower() for word in ("cpu", "package", "x86_pkg")) else 1
+        if -20 <= celsius <= 150:
+            candidates.append((priority, source, celsius))
+    for sensor in Path("/sys/class/hwmon").glob("hwmon*/temp*_input"):
+        raw = _read_text(sensor)
+        if raw is None:
+            continue
+        try:
+            celsius = float(raw) / 1000
+        except ValueError:
+            continue
+        label = _read_text(sensor.with_name(sensor.name.replace("_input", "_label")))
+        source = label or sensor.parent.name
+        priority = 0 if any(word in source.lower() for word in ("cpu", "package", "core")) else 2
+        if -20 <= celsius <= 150:
+            candidates.append((priority, source, celsius))
+    if not candidates:
+        return {"celsius": None, "source": None}
+    _, source, celsius = sorted(candidates, key=lambda item: (item[0], -item[2]))[0]
+    return {"celsius": round(celsius, 1), "source": source}
 
 
 def _disk_status() -> dict[str, int]:
@@ -143,6 +206,8 @@ def collect_system_status() -> dict:
         "resources": {
             "uptime_seconds": _uptime_seconds(),
             "load_1m": load_1m,
+            "cpu": _cpu_status(load_1m),
+            "temperature": _temperature_status(),
             "memory": _memory_status(),
             "disk": _disk_status(),
         },

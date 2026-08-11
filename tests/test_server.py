@@ -486,6 +486,10 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(media_type, "application/json")
         self.assertTrue(payload["host"]["hostname"])
         self.assertGreater(payload["resources"]["disk"]["total_bytes"], 0)
+        self.assertIn("utilization_percent", payload["resources"]["cpu"])
+        self.assertGreaterEqual(payload["resources"]["cpu"]["logical_processors"], 1)
+        self.assertIn("used_percent", payload["resources"]["memory"])
+        self.assertIn("celsius", payload["resources"]["temperature"])
         self.assertIn("direwolf", payload["tooling"]["commands"])
         self.assertIn(payload["hardware"]["state"], {"bare-server", "devices-present"})
         self.assertIsInstance(payload["hardware"]["serial_by_id"], list)
@@ -498,6 +502,11 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(media_type, "text/html")
         self.assertIn(b"Radio Operations Center", body)
         self.assertIn(b"System readiness", body)
+        self.assertIn(b"Performance trends", body)
+        self.assertIn(b'id="chart-cpu"', body)
+        self.assertIn(b'id="chart-memory"', body)
+        self.assertIn(b'id="chart-temperature"', body)
+        self.assertIn(b'id="chart-aprsFrames"', body)
         self.assertIn(b'id="metric-voice-calls"', body)
         self.assertIn(b'id="metric-vhf-locks"', body)
         self.assertIn(b'id="metric-uhf-locks"', body)
@@ -523,9 +532,7 @@ class ServerTests(unittest.TestCase):
             b'href="#overview"',
             b'href="#aprs-activity"',
             b'href="#winlink-gateway"',
-            b'href="#radio-services"',
             b'href="#weather-monitor"',
-            b'href="#system-readiness"',
             b'href="#applications"',
             b'href="#registration"',
             b'href="#operator-controls"',
@@ -536,12 +543,12 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
         expected_sections = [
             b'id="overview"',
+            b'id="radio-services"',
+            b'id="system-readiness"',
             b'id="aprs-activity"',
             b'id="aprs-map-section"',
             b'id="winlink-gateway"',
-            b'id="radio-services"',
             b'id="weather-monitor"',
-            b'id="system-readiness"',
             b'id="applications"',
             b'id="registration"',
             b'id="operator-controls"',
@@ -549,12 +556,12 @@ class ServerTests(unittest.TestCase):
         ]
         section_positions = [body.index(section) for section in expected_sections]
         self.assertEqual(section_positions, sorted(section_positions))
-        self.assertEqual(body.count(b'data-workspace-panel='), 10)
+        self.assertEqual(body.count(b'data-workspace-panel='), 8)
         self.assertIn(b'id="workspace-overview" class="workspace-panel"', body)
         self.assertIn(b'id="workspace-aprs" class="workspace-panel"', body)
         self.assertIn(b'data-workspace-panel="configuration"', body)
         self.assertNotIn(b'data-workspace-panel="overview" aria-labelledby="nav-overview" tabindex="-1" hidden', body)
-        self.assertEqual(body.count(b'class="workspace-panel" data-workspace-panel='), 10)
+        self.assertEqual(body.count(b'class="workspace-panel" data-workspace-panel='), 8)
         self.assertIn(b"Position data from", body)
         self.assertIn(b"OpenStreetMap contributors", body)
         self.assertIn(b"APRS listener", body)
@@ -578,6 +585,9 @@ class ServerTests(unittest.TestCase):
         self.assertIn(b"initWorkspaceNavigation", app)
         self.assertIn(b"showWorkspacePanel", app)
         self.assertIn(b"aprsMap.invalidateSize()", app)
+        self.assertIn(b"recordOverviewTelemetry", app)
+        self.assertIn(b"refreshOverviewTelemetry", app)
+        self.assertIn(b"TELEMETRY_WINDOW_MS", app)
         self.assertIn(b"showWinlink", app)
         self.assertIn(b'/api/gateway', app)
         self.assertIn(b'/api/winlink/sessions', app)

@@ -7,7 +7,7 @@
     <title>N0JCG Gateway | Radio Operations Center</title>
     <link rel="icon" href="/assets/N0JCG_Icon_Approved.png" type="image/png">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynHTlfQpZQ7Gok04p2rQjMZgq7dQ=" crossorigin="">
-    <link rel="stylesheet" href="/styles.css?v=20260811-panel-workspace">
+    <link rel="stylesheet" href="/styles.css?v=20260811-overview-telemetry">
   </head>
   <body>
     <div class="app-shell">
@@ -37,9 +37,7 @@
           <a id="nav-overview" href="#overview" data-workspace-target="overview" aria-controls="workspace-overview" aria-current="page"><span aria-hidden="true">⌂</span>Overview</a>
           <a id="nav-aprs" href="#aprs-activity" data-workspace-target="aprs" aria-controls="workspace-aprs"><span aria-hidden="true">⌖</span>APRS</a>
           <a id="nav-winlink" href="#winlink-gateway" data-workspace-target="winlink" aria-controls="workspace-winlink"><span aria-hidden="true">WL</span>Winlink</a>
-          <a id="nav-radio" href="#radio-services" data-workspace-target="radio" aria-controls="workspace-radio"><span aria-hidden="true">⌁</span>Radio services</a>
           <a id="nav-weather" href="#weather-monitor" data-workspace-target="weather" aria-controls="workspace-weather"><span aria-hidden="true">☼</span>Weather</a>
-          <a id="nav-system" href="#system-readiness" data-workspace-target="system" aria-controls="workspace-system"><span aria-hidden="true">▦</span>System</a>
           <a id="nav-applications" href="#applications" data-workspace-target="applications" aria-controls="workspace-applications"><span aria-hidden="true">↗</span>Applications</a>
           <a id="nav-registration" href="#registration" data-workspace-target="registration" aria-controls="workspace-registration"><span aria-hidden="true">ID</span>Registration</a>
           <a id="nav-operator" href="#operator-controls" data-workspace-target="operator" aria-controls="workspace-operator"><span aria-hidden="true">OP</span>Operator</a>
@@ -71,26 +69,65 @@
         </section>
 
         <section class="summary-grid" aria-label="Live operating summary">
-          <article class="summary-card">
+          <article class="status-card">
             <div class="card-heading"><span>APRS listener</span><span class="live-label">Live</span></div>
             <strong id="metric-aprs">—</strong>
             <small id="metric-aprs-detail">Checking receiver ownership</small>
           </article>
-          <article class="summary-card">
-            <div class="card-heading"><span>Decoded frames</span></div>
-            <strong id="metric-aprs-packets">—</strong>
-            <small id="metric-aprs-packets-detail">Checking packet log</small>
-          </article>
-          <article class="summary-card">
+          <article class="status-card">
             <div class="card-heading"><span>Air traffic</span></div>
             <strong id="metric-air-traffic">—</strong>
             <small id="metric-air-traffic-detail">Checking application</small>
           </article>
-          <article class="summary-card">
+          <article class="status-card">
+            <div class="card-heading"><span>Scanner</span></div>
+            <strong id="metric-scanner">—</strong>
+            <small id="metric-scanner-detail">Checking application</small>
+          </article>
+          <article class="status-card">
             <div class="card-heading"><span>Weather station</span></div>
             <strong id="metric-weather">—</strong>
             <small id="metric-weather-detail">Waiting for GW1100/WS90 data</small>
           </article>
+        </section>
+
+        <section id="overview-telemetry" class="content-section overview-section" aria-labelledby="overview-telemetry-heading">
+          <div class="section-heading">
+            <div><p class="eyebrow">Rolling telemetry</p><h2 id="overview-telemetry-heading">Performance trends</h2></div>
+            <p>Last 60 minutes · 30-second samples</p>
+          </div>
+          <div class="telemetry-grid" aria-live="polite">
+            <article class="telemetry-card" data-telemetry-card="cpu"><div class="telemetry-heading"><span>CPU utilization</span><strong id="metric-cpu">—</strong></div><div id="chart-cpu" class="telemetry-chart" role="img" aria-label="CPU utilization history"></div><small id="metric-cpu-detail">Waiting for samples</small></article>
+            <article class="telemetry-card" data-telemetry-card="memory"><div class="telemetry-heading"><span>Memory used</span><strong id="metric-memory">—</strong></div><div id="chart-memory" class="telemetry-chart" role="img" aria-label="Memory usage history"></div><small id="metric-memory-total">Waiting for samples</small></article>
+            <article class="telemetry-card" data-telemetry-card="temperature"><div class="telemetry-heading"><span>CPU temperature</span><strong id="metric-temperature">—</strong></div><div id="chart-temperature" class="telemetry-chart" role="img" aria-label="CPU temperature history"></div><small id="metric-temperature-detail">Waiting for sensor</small></article>
+            <article class="telemetry-card" data-telemetry-card="aprsFrames"><div class="telemetry-heading"><span>Decoded APRS frames</span><strong id="metric-aprs-packets">—</strong></div><div id="chart-aprsFrames" class="telemetry-chart" role="img" aria-label="Decoded APRS frame history"></div><small id="metric-aprs-packets-detail">Waiting for samples</small></article>
+            <article class="telemetry-card" data-telemetry-card="aircraft"><div class="telemetry-heading"><span>Aircraft tracked</span><strong id="metric-aircraft">—</strong></div><div id="chart-aircraft" class="telemetry-chart" role="img" aria-label="Aircraft tracked history"></div><small id="metric-aircraft-detail">Waiting for Air Traffic Center</small></article>
+            <article class="telemetry-card" data-telemetry-card="voiceCalls"><div class="telemetry-heading"><span>Scanner voice calls</span><strong id="metric-voice-calls">—</strong></div><div id="chart-voiceCalls" class="telemetry-chart" role="img" aria-label="Scanner voice call history"></div><small id="metric-voice-calls-detail">Waiting for Scanner</small></article>
+          </div>
+        </section>
+
+        <section id="radio-services" class="content-section overview-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">Device ownership</p><h2>Radio service status</h2></div>
+            <p>Observed state from the ROC and independent RF nodes</p>
+          </div>
+          <div class="service-grid" id="service-grid" aria-live="polite"></div>
+        </section>
+
+        <section id="system-readiness" class="content-section overview-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">ROC server</p><h2>System readiness</h2></div>
+            <p id="hardware-state">Checking hardware</p>
+          </div>
+          <div class="metric-grid" id="metric-grid" aria-live="polite">
+            <article class="status-card"><div class="card-heading"><span>Host</span></div><strong id="metric-host">—</strong><small id="metric-platform">—</small></article>
+            <article class="status-card"><div class="card-heading"><span>Uptime</span></div><strong id="metric-uptime">—</strong><small id="metric-load">—</small></article>
+            <article class="status-card"><div class="card-heading"><span>Disk free</span></div><strong id="metric-disk">—</strong><small id="metric-disk-total">—</small></article>
+            <article class="status-card"><div class="card-heading"><span>Radio tools</span></div><strong id="metric-tools">—</strong><small id="metric-tools-detail">—</small></article>
+            <article class="status-card"><div class="card-heading"><span>Attached RF paths</span></div><strong id="metric-hardware">—</strong><small id="metric-hardware-detail">—</small></article>
+            <article class="status-card"><div class="card-heading"><span>VHF locks</span></div><strong id="metric-vhf-locks">—</strong><small id="metric-vhf-locks-detail">VHF analog scanner</small></article>
+            <article class="status-card"><div class="card-heading"><span>UHF locks</span></div><strong id="metric-uhf-locks">—</strong><small id="metric-uhf-locks-detail">UHF analog scanner</small></article>
+          </div>
         </section>
         </div>
 
@@ -200,16 +237,6 @@
         </section>
         </div>
 
-        <div id="workspace-radio" class="workspace-panel" data-workspace-panel="radio" aria-labelledby="nav-radio" tabindex="-1" hidden>
-        <section id="radio-services" class="content-section">
-          <div class="section-heading">
-            <div><p class="eyebrow">Device ownership</p><h2>Radio services</h2></div>
-            <p>Observed state from independent RF nodes</p>
-          </div>
-          <div class="service-grid" id="service-grid" aria-live="polite"></div>
-        </section>
-        </div>
-
         <div id="workspace-weather" class="workspace-panel" data-workspace-panel="weather" aria-labelledby="nav-weather" tabindex="-1" hidden>
         <section id="weather-monitor" class="content-section">
           <div class="section-heading">
@@ -225,27 +252,6 @@
             <article class="weather-card"><span>UV / solar</span><strong id="weather-uv">—</strong><small id="weather-solar">—</small></article>
             <article class="weather-card"><span>Gateway indoor</span><strong id="weather-indoor">—</strong><small id="weather-indoor-detail">GW1100 sensor</small></article>
             <article class="weather-card"><span>Gateway</span><strong id="weather-gateway">Checking</strong><small id="weather-gateway-detail">192.168.68.131</small></article>
-          </div>
-        </section>
-        </div>
-
-        <div id="workspace-system" class="workspace-panel" data-workspace-panel="system" aria-labelledby="nav-system" tabindex="-1" hidden>
-        <section id="system-readiness" class="content-section">
-          <div class="section-heading">
-            <div><p class="eyebrow">ROC server</p><h2>System readiness</h2></div>
-            <p id="hardware-state">Checking hardware</p>
-          </div>
-          <div class="metric-grid" id="metric-grid" aria-live="polite">
-            <article class="metric-card"><span>Host</span><strong id="metric-host">—</strong><small id="metric-platform">—</small></article>
-            <article class="metric-card"><span>Uptime</span><strong id="metric-uptime">—</strong><small id="metric-load">—</small></article>
-            <article class="metric-card"><span>Memory available</span><strong id="metric-memory">—</strong><small id="metric-memory-total">—</small></article>
-            <article class="metric-card"><span>Disk free</span><strong id="metric-disk">—</strong><small id="metric-disk-total">—</small></article>
-            <article class="metric-card"><span>Radio tools</span><strong id="metric-tools">—</strong><small id="metric-tools-detail">—</small></article>
-            <article class="metric-card"><span>Attached RF paths</span><strong id="metric-hardware">—</strong><small id="metric-hardware-detail">—</small></article>
-            <article class="metric-card"><span>Aircraft tracked</span><strong id="metric-aircraft">—</strong><small id="metric-aircraft-detail">Remote ADS-B/UAT data</small></article>
-            <article class="metric-card"><span>Voice calls</span><strong id="metric-voice-calls">—</strong><small id="metric-voice-calls-detail">Scanner activity</small></article>
-            <article class="metric-card"><span>VHF locks</span><strong id="metric-vhf-locks">—</strong><small id="metric-vhf-locks-detail">VHF analog scanner</small></article>
-            <article class="metric-card"><span>UHF locks</span><strong id="metric-uhf-locks">—</strong><small id="metric-uhf-locks-detail">UHF analog scanner</small></article>
           </div>
         </section>
         </div>
@@ -384,6 +390,6 @@
     </section>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="/app.js?v=20260811-panel-workspace"></script>
+    <script src="/app.js?v=20260811-overview-telemetry"></script>
   </body>
 </html>

@@ -5,6 +5,31 @@ let registrationState = null;
 let operationalStarted = false;
 let operationalIntervals = [];
 let serviceInventory = [];
+let applicationInventory = [];
+let latestGateway = null;
+const TELEMETRY_STORAGE_KEY = "n0jcg-roc-overview-telemetry-v1";
+const TELEMETRY_WINDOW_MS = 60 * 60 * 1000;
+const TELEMETRY_MAX_POINTS = 121;
+const TELEMETRY_METRICS = {
+  cpu: {label: "CPU utilization", fixedMin: 0, fixedMax: 100, unit: "%"},
+  memory: {label: "Memory used", fixedMin: 0, fixedMax: 100, unit: "%"},
+  temperature: {label: "CPU temperature", unit: "°C"},
+  aprsFrames: {label: "Decoded APRS frames", unit: ""},
+  aircraft: {label: "Aircraft tracked", unit: ""},
+  voiceCalls: {label: "Scanner voice calls", unit: ""},
+};
+
+function loadTelemetryHistory() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(TELEMETRY_STORAGE_KEY) || "[]");
+    const cutoff = Date.now() - TELEMETRY_WINDOW_MS;
+    return Array.isArray(parsed) ? parsed.filter((point) => Number(point?.timestamp) >= cutoff).slice(-TELEMETRY_MAX_POINTS) : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+let telemetryHistory = loadTelemetryHistory();
 
 function trialDataAllowed() {
   return Boolean(registrationState?.registered || registrationState?.data_updates_allowed);
@@ -139,29 +164,126 @@ function runtimeServiceState(service, gateway) {
   if (service.id === "winlink") {
     return gateway?.winlink?.state === "operational" ? "operational" : "service fault";
   }
+  const applicationId = service.id === "scanner" ? "scanner" : ["adsb", "uat", "noaa", "airband"].includes(service.id) ? "air_traffic" : null;
+  if (applicationId) {
+    const application = applicationInventory.find((item) => item.id === applicationId);
+    if (application) return application.reachable ? "operational" : (application.enabled ? "service fault" : "disabled");
+  }
   return service.state;
 }
 
 function serviceCard(service, gateway) {
   const card = document.createElement("article");
-  card.className = "service-card";
+  card.className = "status-card service-card";
   const serviceState = runtimeServiceState(service, gateway);
   const stateClass = {
     operational: "state state--operational",
     "service fault": "state state--fault",
     "external-node": "state state--observed",
   }[serviceState] || "state state--planned";
+  const stateLabel = serviceState.replaceAll("-", " ");
   card.innerHTML = `
-    <span class="phase">Phase ${service.phase}</span>
-    <h3>${service.name}</h3>
-    <p>${service.hardware}<br>${service.rf_role}</p>
-    <span class="${stateClass}">${serviceState}</span>`;
+    <div class="card-heading"><span>${service.name}</span><span class="phase">Phase ${service.phase}</span></div>
+    <strong class="${stateClass}">${stateLabel}</strong>
+    <small>${service.hardware} · ${service.rf_role}</small>`;
   return card;
 }
 
 function showServices(gateway) {
+  if (gateway) latestGateway = gateway;
   serviceGrid.replaceChildren();
-  serviceInventory.forEach((service) => serviceGrid.appendChild(serviceCard(service, gateway)));
+  serviceInventory.forEach((service) => serviceGrid.appendChild(serviceCard(service, latestGateway)));
+}
+
+function telemetryNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function telemetryApplication(payload, id) {
+  return payload?.applications?.find((application) => application.id === id);
+}
+
+function renderTelemetryChart(metricName) {
+  const chart = document.querySelector(`#chart-${metricName}`);
+  const definition = TELEMETRY_METRICS[metricName];
+  if (!chart || !definition) return;
+  const points = telemetryHistory
+    .map((point) => ({timestamp: point.timestamp, value: telemetryNumber(point[metricName])}))
+    .filter((point) => point.value !== null);
+  chart.replaceChildren();
+  if (!points.length) {
+    const empty = document.createElement("span");
+    empty.className = "telemetry-empty";
+    empty.textContent = "Collecting history";
+    chart.appendChild(empty);
+    return;
+  }
+
+  const width = 320;
+  const height = 88;
+  const padding = 5;
+  const values = points.map((point) => point.value);
+  let minimum = definition.fixedMin ?? Math.min(...values);
+  let maximum = definition.fixedMax ?? Math.max(...values);
+  if (maximum === minimum) {
+    const margin = maximum === 0 ? 1 : Math.max(1, Math.abs(maximum) * 0.08);
+    minimum -= margin;
+    maximum += margin;
+  }
+  const coordinates = points.map((point, index) => {
+    const x = padding + (points.length === 1 ? (width - padding * 2) / 2 : index / (points.length - 1) * (width - padding * 2));
+    const y = height - padding - (point.value - minimum) / (maximum - minimum) * (height - padding * 2);
+    return [x, y];
+  });
+  const namespace = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(namespace, "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("aria-hidden", "true");
+  const area = document.createElementNS(namespace, "path");
+  const linePath = coordinates.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  area.setAttribute("d", `${linePath} L${coordinates.at(-1)[0].toFixed(1)},${height - padding} L${coordinates[0][0].toFixed(1)},${height - padding} Z`);
+  area.setAttribute("class", "telemetry-area");
+  const line = document.createElementNS(namespace, "path");
+  line.setAttribute("d", linePath);
+  line.setAttribute("class", "telemetry-line");
+  svg.append(area, line);
+  chart.appendChild(svg);
+  const scale = document.createElement("div");
+  scale.className = "telemetry-scale";
+  scale.innerHTML = `<span>${minimum.toFixed(definition.unit ? 1 : 0)}${definition.unit}</span><span>${maximum.toFixed(definition.unit ? 1 : 0)}${definition.unit}</span>`;
+  chart.appendChild(scale);
+  const latest = points.at(-1);
+  const first = points[0];
+  chart.setAttribute("aria-label", `${definition.label}: ${latest.value}${definition.unit}; ${points.length} samples from ${new Date(first.timestamp).toLocaleTimeString()} to ${new Date(latest.timestamp).toLocaleTimeString()}`);
+}
+
+function renderTelemetryCharts() {
+  Object.keys(TELEMETRY_METRICS).forEach(renderTelemetryChart);
+}
+
+function recordOverviewTelemetry(system, aprs, applications) {
+  const airTraffic = telemetryApplication(applications, "air_traffic");
+  const scanner = telemetryApplication(applications, "scanner");
+  const point = {
+    timestamp: Date.now(),
+    cpu: telemetryNumber(system?.resources?.cpu?.utilization_percent),
+    memory: telemetryNumber(system?.resources?.memory?.used_percent),
+    temperature: telemetryNumber(system?.resources?.temperature?.celsius),
+    aprsFrames: telemetryNumber(aprs?.packet_count),
+    aircraft: airTraffic?.reachable ? telemetryNumber(airTraffic.metrics?.aircraft_count) : null,
+    voiceCalls: scanner?.reachable ? telemetryNumber(scanner.metrics?.voice_calls) : null,
+  };
+  telemetryHistory.push(point);
+  const cutoff = point.timestamp - TELEMETRY_WINDOW_MS;
+  telemetryHistory = telemetryHistory.filter((sample) => sample.timestamp >= cutoff).slice(-TELEMETRY_MAX_POINTS);
+  try {
+    window.localStorage.setItem(TELEMETRY_STORAGE_KEY, JSON.stringify(telemetryHistory));
+  } catch (_error) {
+    // The live chart remains available even if browser storage is disabled.
+  }
+  renderTelemetryCharts();
 }
 
 function formatBytes(value) {
@@ -538,8 +660,15 @@ function showSystem(system) {
   document.querySelector("#metric-platform").textContent = `${system.host.operating_system} ${system.host.kernel} · ${system.host.architecture}`;
   document.querySelector("#metric-uptime").textContent = formatUptime(system.resources.uptime_seconds);
   document.querySelector("#metric-load").textContent = `1 minute load: ${system.resources.load_1m ?? "unavailable"}`;
-  document.querySelector("#metric-memory").textContent = formatBytes(system.resources.memory.available_bytes);
-  document.querySelector("#metric-memory-total").textContent = `${formatBytes(system.resources.memory.total_bytes)} total`;
+  const cpuPercent = system.resources.cpu?.utilization_percent;
+  document.querySelector("#metric-cpu").textContent = cpuPercent === null || cpuPercent === undefined ? "—" : `${Number(cpuPercent).toFixed(1)}%`;
+  document.querySelector("#metric-cpu-detail").textContent = `${system.resources.cpu?.logical_processors || "—"} logical processors · load ${system.resources.load_1m ?? "—"}`;
+  const memoryPercent = system.resources.memory.used_percent;
+  document.querySelector("#metric-memory").textContent = memoryPercent === null || memoryPercent === undefined ? "—" : `${Number(memoryPercent).toFixed(1)}%`;
+  document.querySelector("#metric-memory-total").textContent = `${formatBytes(system.resources.memory.used_bytes)} used · ${formatBytes(system.resources.memory.total_bytes)} total`;
+  const temperature = system.resources.temperature?.celsius;
+  document.querySelector("#metric-temperature").textContent = temperature === null || temperature === undefined ? "—" : `${Number(temperature).toFixed(1)}°C`;
+  document.querySelector("#metric-temperature-detail").textContent = system.resources.temperature?.source || "CPU temperature sensor unavailable";
   document.querySelector("#metric-disk").textContent = formatBytes(system.resources.disk.free_bytes);
   document.querySelector("#metric-disk-total").textContent = `${formatBytes(system.resources.disk.total_bytes)} total`;
   document.querySelector("#metric-tools").textContent = system.tooling.ready ? "Ready" : "Incomplete";
@@ -891,6 +1020,8 @@ function showApplicationStatus(application) {
 function showScannerReadiness(application) {
   const metrics = application.metrics || {};
   if (!application.enabled) {
+    document.querySelector("#metric-scanner").textContent = "Disabled";
+    document.querySelector("#metric-scanner-detail").textContent = "Enable Scanner in Application connections";
     document.querySelector("#metric-voice-calls").textContent = "Disabled";
     document.querySelector("#metric-vhf-locks").textContent = "—";
     document.querySelector("#metric-uhf-locks").textContent = "—";
@@ -900,6 +1031,8 @@ function showScannerReadiness(application) {
     return;
   }
   if (!application.reachable) {
+    document.querySelector("#metric-scanner").textContent = "Offline";
+    document.querySelector("#metric-scanner-detail").textContent = "N0JCG Scanner API unavailable";
     document.querySelector("#metric-voice-calls").textContent = "—";
     document.querySelector("#metric-vhf-locks").textContent = "—";
     document.querySelector("#metric-uhf-locks").textContent = "—";
@@ -908,6 +1041,8 @@ function showScannerReadiness(application) {
     document.querySelector("#metric-uhf-locks-detail").textContent = "Scanner API unavailable";
     return;
   }
+  document.querySelector("#metric-scanner").textContent = "Online";
+  document.querySelector("#metric-scanner-detail").textContent = `Standalone Pi · ${application.host}:${application.port}`;
   document.querySelector("#metric-voice-calls").textContent = String(metrics.voice_calls ?? 0);
   document.querySelector("#metric-voice-calls-detail").textContent = "Distinct P25 voice calls";
   document.querySelector("#metric-vhf-locks").textContent = String(metrics.vhf_locks ?? 0);
@@ -925,11 +1060,13 @@ function populateApplicationForm(application) {
 }
 
 function showApplications(payload) {
+  applicationInventory = payload.applications || [];
   payload.applications.forEach((application) => {
     showApplicationStatus(application);
     populateApplicationForm(application);
     if (application.id === "scanner") showScannerReadiness(application);
   });
+  if (latestGateway) showServices(latestGateway);
 }
 
 async function refreshApplications() {
@@ -939,6 +1076,26 @@ async function refreshApplications() {
   const payload = await response.json();
   showApplications(payload);
   return payload;
+}
+
+async function refreshOverviewTelemetry() {
+  if (!trialDataAllowed()) return null;
+  const [systemResponse, aprsResponse, applicationsResponse] = await Promise.all([
+    fetch("/api/system", {cache: "no-store"}),
+    fetch("/api/aprs", {cache: "no-store"}),
+    fetch("/api/applications", {cache: "no-store"}),
+  ]);
+  if (![systemResponse, aprsResponse, applicationsResponse].every((response) => response.ok)) {
+    throw new Error("Overview telemetry API response failed");
+  }
+  const system = await systemResponse.json();
+  const aprs = await aprsResponse.json();
+  const applications = await applicationsResponse.json();
+  showSystem(system);
+  showAprs(aprs);
+  showApplications(applications);
+  recordOverviewTelemetry(system, aprs, applications);
+  return {system, aprs, applications};
 }
 
 function initApplicationSettings() {
@@ -1085,11 +1242,12 @@ async function loadOperationalData() {
       interlock.querySelector("small").textContent = reasons || "Commissioned gateway services are not currently on air";
     }
     serviceInventory = inventory.services;
-    showServices(gateway);
     showSystem(system);
     showAprs(aprs);
     loadAprsMap();
     showApplications(applications);
+    showServices(gateway);
+    recordOverviewTelemetry(system, aprs, applications);
     showWeather(weather);
     showWinlink(gateway);
     operationalStarted = true;
@@ -1097,7 +1255,7 @@ async function loadOperationalData() {
       operationalIntervals = [
         window.setInterval(refreshWeather, 30000),
         window.setInterval(refreshWinlink, 30000),
-        window.setInterval(() => refreshApplications().catch((error) => console.error("Application refresh failed", error)), 30000),
+        window.setInterval(() => refreshOverviewTelemetry().catch((error) => console.error("Overview telemetry refresh failed", error)), 30000),
       ];
     }
   } catch (error) {
@@ -1194,5 +1352,6 @@ function initWorkspaceNavigation() {
   showWorkspacePanel(window.location.hash || "#overview", {scroll: false});
 }
 
+renderTelemetryCharts();
 initWorkspaceNavigation();
 start();
