@@ -1,7 +1,7 @@
 [Unit]
 Description=N0JCG Radio Operations Center
-After=network-online.target
-Wants=network-online.target
+After=network-online.target n0jcg-operator-helper.service
+Wants=network-online.target n0jcg-operator-helper.service
 
 [Service]
 Type=simple
@@ -9,7 +9,15 @@ User=n0jcg
 Group=n0jcg
 WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
 Environment=PYTHONPATH=/home/n0jcg/sdrdev/N0JCG-ROC/src
-ExecStart=/usr/bin/python3 -m n0jcg_roc.server --host 0.0.0.0 --port 8095
+Environment=ROC_APPLICATION_SETTINGS=/var/lib/n0jcg-roc/applications.json
+Environment=ROC_APRSFI_SETTINGS=/var/lib/n0jcg-roc/aprs-fi.json
+Environment=ROC_APRSFI_CACHE=/var/lib/n0jcg-roc/aprs-fi-cache.json
+Environment=ROC_STATION_SETTINGS=/var/lib/n0jcg-roc/station.json
+EnvironmentFile=-/etc/n0jcg/operator-controls.env
+StateDirectory=n0jcg-roc
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+ExecStart=/usr/bin/python3 -m n0jcg_roc.server --host 0.0.0.0 --port 80
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

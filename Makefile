@@ -5,7 +5,7 @@ PORT ?= 8095
 
 test:
 	PYTHONPATH=src $(PYTHON) -m unittest discover -s tests -v
-	$(PYTHON) -m compileall -q src tests
+	$(PYTHON) -m compileall -q src tests deploy/operator_helper.py
 	bash -n tools/*.sh deploy/*.sh
 	./tools/check_repository_hygiene.sh
 	@if command -v node >/dev/null 2>&1; then node --check web/app.js; else echo "INFO: node unavailable; JavaScript syntax check skipped"; fi

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 240" role="img" aria-labelledby="title desc">
+  <title id="title">N0JCG Open Radio Platform reversed logo</title>
+  <desc id="desc">White, blue, and cyan N0JCG radio platform logo on an engineering navy field.</desc>
+  <rect width="900" height="240" rx="20" fill="#0A1F44"/>
+  <g transform="translate(12 10) scale(.82)">
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M34 174 Q128 78 222 174" stroke="#5CA8FF" stroke-width="12"/>
+      <path d="M62 174 Q128 112 194 174" stroke="#00D7FA" stroke-width="8"/>
+      <path d="M128 170V104" stroke="#FFFFFF" stroke-width="12"/>
+      <path d="M104 174L128 130l24 44" stroke="#FFFFFF" stroke-width="12"/>
+      <path d="M94 92 Q128 58 162 92" stroke="#5CA8FF" stroke-width="9"/>
+      <path d="M108 72 Q128 52 148 72" stroke="#00D7FA" stroke-width="8"/>
+    </g>
+    <circle cx="34" cy="174" r="14" fill="#5CA8FF"/>
+    <circle cx="128" cy="174" r="14" fill="#00D7FA"/>
+    <circle cx="222" cy="174" r="14" fill="#5CA8FF"/>
+  </g>
+  <text x="246" y="126" fill="#FFFFFF" font-family="Orbitron, Inter, Arial, sans-serif" font-size="104" font-weight="700" letter-spacing="5">N0JCG</text>
+  <line x1="329" y1="124" x2="371" y2="48" stroke="#00D7FA" stroke-width="8" stroke-linecap="round" aria-hidden="true"/>
+  <text x="252" y="178" fill="#77DFF1" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="25" font-weight="600" letter-spacing="7">OPEN RADIO PLATFORM</text>
+</svg>

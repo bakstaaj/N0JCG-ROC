@@ -3,12 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ROC_HOST="${ROC_HOST:-192.168.68.145}"
+ROC_HOST="${ROC_HOST:-192.168.68.114}"
 ROC_USER="${ROC_USER:-n0jcg}"
-ROC_PORT="${ROC_PORT:-8095}"
+ROC_PORT="${ROC_PORT:-80}"
 ROC_IDENTITY_FILE="${ROC_IDENTITY_FILE:-${HOME}/.ssh/n0jcg_roc_ed25519}"
 BASE_URL="http://${ROC_HOST}:${ROC_PORT}"
 ROC_EXPECT_HARDWARE_STATE="${ROC_EXPECT_HARDWARE_STATE:-}"
+ROC_EXPECT_RTL_COUNT="${ROC_EXPECT_RTL_COUNT:-}"
 
 [[ "${ROC_PORT}" =~ ^[0-9]+$ ]] && (( ROC_PORT >= 1 && ROC_PORT <= 65535 )) || {
   echo 'FINAL: FAIL - invalid ROC_PORT'
@@ -27,7 +28,7 @@ echo 'PASS served app.js and index.html exactly match local source'
 
 health_json="$(curl -fsS "${BASE_URL}/api/health")"
 system_json="$(curl -fsS "${BASE_URL}/api/system")"
-ROC_EXPECT_HARDWARE_STATE="${ROC_EXPECT_HARDWARE_STATE}" python3 - "${health_json}" "${system_json}" <<'PY'
+ROC_EXPECT_HARDWARE_STATE="${ROC_EXPECT_HARDWARE_STATE}" ROC_EXPECT_RTL_COUNT="${ROC_EXPECT_RTL_COUNT}" python3 - "${health_json}" "${system_json}" <<'PY'
 import json
 import os
 import sys
@@ -35,18 +36,21 @@ import sys
 health = json.loads(sys.argv[1])
 system = json.loads(sys.argv[2])
 assert health["status"] == "ok", health
-assert health["transmit"]["ready"] is False, health
+assert isinstance(health["transmit"]["ready"], bool), health
+assert isinstance(health["transmit"]["reasons"], list), health
 assert system["host"]["hostname"] == "n0jcg-roc", system
 assert system["tooling"]["ready"] is True, system
-assert system["hardware"]["rtl_sdr_count"] == 0, system
+expected_rtl = os.environ.get("ROC_EXPECT_RTL_COUNT", "")
+if expected_rtl:
+    assert system["hardware"]["rtl_sdr_count"] == int(expected_rtl), system
 expected = os.environ.get("ROC_EXPECT_HARDWARE_STATE", "")
 if expected:
     assert system["hardware"]["state"] == expected, system
 PY
-echo "PASS live APIs report ready tooling, ${ROC_EXPECT_HARDWARE_STATE:-observed} hardware, and locked transmit"
+echo "PASS live APIs report ready tooling, ${ROC_EXPECT_HARDWARE_STATE:-observed} hardware, and a valid transmit-interlock state"
 
 ssh -i "${ROC_IDENTITY_FILE}" -o BatchMode=yes -o ConnectTimeout=8 \
   "${ROC_USER}@${ROC_HOST}" \
-  'systemctl is-enabled --quiet n0jcg-roc.service && systemctl is-active --quiet n0jcg-roc.service && test -z "$(systemctl --failed --no-legend --plain)"'
-echo 'PASS ROC systemd service enabled/active with zero failed units'
+  'systemctl is-enabled --quiet n0jcg-roc.service n0jcg-weather.service && systemctl is-active --quiet n0jcg-roc.service n0jcg-weather.service && test -z "$(systemctl --failed --no-legend --plain)"'
+echo 'PASS ROC and weather systemd services enabled/active with zero failed units'
 echo 'FINAL: PASS'

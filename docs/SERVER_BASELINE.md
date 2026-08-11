@@ -28,7 +28,7 @@ The DigiRig Mobile is now attached and read-only ownership checks pass:
 - Silicon Labs CP2102N serial interface at `/dev/ttyUSB0`, using its stable
   `/dev/serial/by-id` path.
 - C-Media USB Audio Device as ALSA card 1 (`hw:CARD=Device,DEV=0`).
-- Realtek RTL2838 DVB-T dongle with R820T tuner and EEPROM serial `00000144`;
+- Realtek RTL2838 DVB-T dongle with R820T tuner and EEPROM serial `00014439`;
   `rtl_eeprom` read it successfully and restored the kernel driver.
 - `n0jcg` has `dialout` and `audio` membership.
 - No Direwolf, Soundmodem, or AX.25 daemon is active; no transmit operation was
@@ -47,8 +47,8 @@ The foundation service was deployed on 2026-08-01:
 | systemd unit | `n0jcg-roc.service` |
 | Enabled at boot | PASS |
 | Active after installation | PASS |
-| LAN health API | `http://192.168.68.145:8095/api/health` PASS |
-| Dashboard | `http://192.168.68.145:8095/` |
+| LAN health API | `http://192.168.68.114/api/health` PASS |
+| Dashboard | `http://192.168.68.114/` |
 | Transmit interlock | LOCKED: operator enable off, coordination unconfirmed, frequency unset |
 
 ## Base tooling installation

@@ -9,28 +9,129 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 import re
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
-from urllib.parse import urlparse
+import subprocess
+import threading
+import time
+from urllib.parse import parse_qs, urlparse
 
 from . import __version__
+from .applications import collect_application_status, save_application_settings
+from .aprs_map import collect_aprs_map, load_aprsfi_settings, save_aprsfi_settings
 from .config import load_station_config, transmit_interlock
 from .inventory import SERVICES
+from .licensing import LicenseClient, LicenseError, RocTrialController
+from .operator_controls import (
+    ALLOWED_ACTIONS,
+    OperatorAuth,
+    append_audit,
+    recent_audit,
+    request_helper,
+    set_trial_services_enabled,
+    session_cookie,
+)
+from .operator_activity import probe_rf_session
 from .system_status import collect_system_status
+from .station_settings import load_station_settings, save_station_settings
+from .weather import read_weather_status, store_observation
+from .winlink import collect_winlink_session_page, collect_winlink_status
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WEB_ROOT = PROJECT_ROOT / "web"
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "station.toml"
 APRS_LOG_PATH = PROJECT_ROOT / "runtime" / "aprs" / "packets.log"
+APRS_JOURNAL_UNIT = os.environ.get("APRS_JOURNAL_UNIT", "n0jcg-aprs-rx.service")
+_APRS_RECORD_CACHE_LOCK = threading.Lock()
+_APRS_RECORD_CACHE: dict[int, tuple[float, list[dict]]] = {}
+DEFAULT_APPLICATION_SETTINGS_PATH = Path(
+    os.environ.get("ROC_APPLICATION_SETTINGS", str(PROJECT_ROOT / "runtime" / "applications.json"))
+)
+DEFAULT_APRSFI_SETTINGS_PATH = Path(
+    os.environ.get("ROC_APRSFI_SETTINGS", str(PROJECT_ROOT / "runtime" / "aprs-fi.json"))
+)
+DEFAULT_APRSFI_CACHE_PATH = Path(
+    os.environ.get("ROC_APRSFI_CACHE", str(PROJECT_ROOT / "runtime" / "aprs-fi-cache.json"))
+)
+DEFAULT_STATION_SETTINGS_PATH = Path(
+    os.environ.get("ROC_STATION_SETTINGS", "/var/lib/n0jcg-roc/station.json")
+)
+DEFAULT_OPERATOR_AUDIT_PATH = Path("/var/lib/n0jcg-roc/operator-audit.jsonl")
+DEFAULT_OPERATOR_SOCKET_PATH = Path("/run/n0jcg-operator-helper/control.sock")
+DEFAULT_MAINTENANCE_PATH = Path("/var/lib/n0jcg-roc/winlink-maintenance")
+DEFAULT_LICENSE_STATE_PATH = Path("/var/lib/n0jcg-roc/licensing")
+APRS_RTL_SERIAL = os.environ.get("APRS_RTL_SERIAL", "00014439")
 APRS_FRAME_PATTERN = re.compile(r"^(?:\[[^\]]+\]\s*)?[A-Z0-9][A-Z0-9-]{1,8}>[^:]+:.+$")
-AIR_TRAFFIC_REMOTE_URL = os.environ.get("ROC_AIR_TRAFFIC_URL", "http://192.168.68.137:8090")
-PI_SCANNER_REMOTE_URL = os.environ.get("ROC_PI_SCANNER_URL", "http://192.168.68.137:8070")
-PI_SCANNER_AUDIO_URL = os.environ.get("ROC_PI_SCANNER_AUDIO_URL", "http://192.168.68.137:8072")
 
 
 def parse_aprs_frames(lines: list[str]) -> list[str]:
     return [line.strip() for line in lines if APRS_FRAME_PATTERN.match(line.strip())]
+
+
+def parse_aprs_journal_records(lines: list[str]) -> list[dict]:
+    records = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+            frame = str(entry.get("MESSAGE") or "").strip()
+            timestamp_epoch = int(entry["__REALTIME_TIMESTAMP"]) / 1_000_000
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError, OSError):
+            continue
+        if not APRS_FRAME_PATTERN.match(frame):
+            continue
+        records.append({
+            "frame": frame,
+            "origin": aprs_frame_origin(frame),
+            "timestamp_utc": datetime.fromtimestamp(timestamp_epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+    return records
+
+
+def collect_aprs_frame_records(*, runner=None, max_lines: int = 50000) -> list[dict]:
+    use_cache = runner is None
+    current_epoch = time.time()
+    max_lines = max(100, min(50000, int(max_lines)))
+    if use_cache:
+        with _APRS_RECORD_CACHE_LOCK:
+            cached_epoch, cached_records = _APRS_RECORD_CACHE.get(max_lines, (0.0, []))
+            if current_epoch - cached_epoch < 5:
+                return list(cached_records)
+        runner = subprocess.run
+    try:
+        result = runner(
+            [
+                "journalctl",
+                f"--unit={APRS_JOURNAL_UNIT}",
+                "--output=json",
+                "--no-pager",
+                f"--lines={max_lines}",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=8,
+        )
+        records = parse_aprs_journal_records(result.stdout.splitlines()) if result.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError):
+        records = []
+    if not records:
+        try:
+            lines = APRS_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
+            timestamp = datetime.fromtimestamp(APRS_LOG_PATH.stat().st_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except OSError:
+            lines, timestamp = [], None
+        records = [
+            {"frame": frame, "origin": aprs_frame_origin(frame), "timestamp_utc": timestamp}
+            for frame in parse_aprs_frames(lines)
+        ]
+    if use_cache:
+        with _APRS_RECORD_CACHE_LOCK:
+            _APRS_RECORD_CACHE[max_lines] = (current_epoch, list(records))
+    return records
+
+
+def aprs_frame_origin(frame: str) -> str:
+    """Identify locally generated APRS-IS traffic separately from RF decodes."""
+    return "internet" if frame.startswith("[ig]") else "rf"
 
 
 def collect_aprs_status() -> dict:
@@ -38,44 +139,69 @@ def collect_aprs_status() -> dict:
         lines = APRS_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         lines = []
-    frames = parse_aprs_frames(lines)
+    records = collect_aprs_frame_records(max_lines=500)
+    frames = [record["frame"] for record in records]
+    all_frames = parse_aprs_frames(lines)
     active = False
     for proc in Path("/proc").glob("[0-9]*"):
         try:
             command = (proc / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore")
         except OSError:
             continue
-        if "rtl_fm" in command and "00000144" in command:
+        if "rtl_fm" in command and APRS_RTL_SERIAL in command:
             active = True
             break
     return {
         "configured": True,
         "active": active,
-        "packet_count": len(frames),
+        "packet_count": len(all_frames),
         "last_packet": frames[-1] if frames else None,
+        "last_packet_origin": aprs_frame_origin(frames[-1]) if frames else None,
+        "last_packet_timestamp_utc": records[-1]["timestamp_utc"] if records else None,
         "packets": frames[-20:],
         "recent": lines[-20:],
     }
 
 
-def collect_air_traffic_status() -> dict:
-    endpoint = f"{AIR_TRAFFIC_REMOTE_URL.rstrip('/')}/api/status"
+def collect_aprs_frame_page(query: str) -> dict:
+    records = collect_aprs_frame_records()
+    params = parse_qs(query)
     try:
-        request = Request(endpoint, headers={"Accept": "application/json"})
-        with urlopen(request, timeout=2) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        return {
-            "configured": True,
-            "reachable": True,
-            "url": AIR_TRAFFIC_REMOTE_URL,
-            "aircraft_count": payload.get("aircraft_count"),
-            "aircraft_with_position": payload.get("aircraft_with_position"),
-            "messages": payload.get("messages"),
-            "receiver_roles": payload.get("receiver_roles"),
-            "decoder": payload.get("decoder"),
-        }
-    except (OSError, URLError, ValueError, TypeError) as error:
-        return {"configured": True, "reachable": False, "url": AIR_TRAFFIC_REMOTE_URL, "error": str(error)}
+        page = max(1, int(params.get("page", ["1"])[0]))
+    except ValueError:
+        page = 1
+    sort = params.get("sort", ["newest"])[0].lower()
+    ordered = list(reversed(records)) if sort != "oldest" else list(records)
+    total = len(ordered)
+    page_size = 25
+    start = (page - 1) * page_size
+    return {
+        "frames": ordered[start:start + page_size],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "pages": max(1, (total + page_size - 1) // page_size),
+        "sort": sort if sort in {"newest", "oldest"} else "newest",
+    }
+
+
+def collect_gateway_status(config: dict) -> dict:
+    """Expose gateway readiness without providing a transmit operation."""
+    aprs = collect_aprs_status()
+    interlock = transmit_interlock(config)
+    return {
+        "receive": {
+            "aprs": {
+                "active": aprs["active"],
+                "packet_count": aprs["packet_count"],
+                "kiss_port": 18001,
+                "agw_port": 18000,
+                "rf_role": "receive-only",
+            }
+        },
+        "winlink": collect_winlink_status(),
+        "transmit": interlock,
+    }
 
 
 class RocRequestHandler(BaseHTTPRequestHandler):
@@ -83,14 +209,8 @@ class RocRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - standard library handler API
         route = urlparse(self.path).path
-        if route.startswith("/air-traffic/api/"):
-            self._proxy_air_traffic("GET")
-            return
-        if route.startswith("/pi-scanner/api/"):
-            self._proxy_path("/pi-scanner", PI_SCANNER_REMOTE_URL, "GET")
-            return
-        if route.startswith("/pi-scanner/audio-api/"):
-            self._proxy_path("/pi-scanner/audio-api", PI_SCANNER_AUDIO_URL, "GET")
+        if route in {"/api/license/status", "/api/registration/status"}:
+            self._json({"ok": True, "registration": self.server.trial_controller.status()})
             return
         if route == "/api/health":
             self._json(
@@ -103,7 +223,19 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             )
             return
         if route == "/api/station":
-            self._json(self.server.station_config)
+            self._json({
+                **self.server.station_config,
+                "display": load_station_settings(
+                    self.server.station_settings_path,
+                    self.server.station_config["station"],
+                ),
+            })
+            return
+        if route == "/api/station/settings":
+            self._json(load_station_settings(
+                self.server.station_settings_path,
+                self.server.station_config["station"],
+            ))
             return
         if route == "/api/aprs/context":
             station = self.server.station_config["station"]
@@ -125,97 +257,287 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if route == "/api/aprs":
             self._json(collect_aprs_status())
             return
-        if route == "/api/air-traffic/status":
-            self._json(collect_air_traffic_status())
+        if route == "/api/aprs/frames":
+            self._json(collect_aprs_frame_page(urlparse(self.path).query))
+            return
+        if route == "/api/aprs-map":
+            params = parse_qs(urlparse(self.path).query)
+            force_refresh = params.get("refresh", ["0"])[0] == "1"
+            payload = collect_aprs_map(
+                APRS_LOG_PATH,
+                self.server.aprsfi_settings_path,
+                self.server.aprsfi_cache_path,
+                force_refresh=force_refresh,
+            )
+            station = self.server.station_config["station"]
+            payload["map_center"] = {
+                "latitude": station["latitude"],
+                "longitude": station["longitude"],
+                "label": station["site_label"],
+            }
+            self._json(payload)
+            return
+        if route == "/api/aprs-map/settings":
+            settings = load_aprsfi_settings(self.server.aprsfi_settings_path)
+            self._json({"enabled": settings["enabled"], "configured": bool(settings["api_key"])})
+            return
+        if route == "/api/gateway":
+            self._json(collect_gateway_status(self.server.station_config))
+            return
+        if route == "/api/winlink/sessions":
+            self._json(collect_winlink_session_page(urlparse(self.path).query))
+            return
+        if route == "/api/operator/status":
+            session = self._operator_session()
+            rf_activity = probe_rf_session()
+            self._json({
+                "configured": self.server.operator_auth.configured,
+                "authenticated": session is not None,
+                "csrf_token": session.get("csrf") if session else None,
+                "session_expires_utc": datetime.fromtimestamp(session["exp"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if session else None,
+                "maintenance_mode": self.server.maintenance_path.exists(),
+                "helper_available": self.server.operator_socket_path.exists(),
+                "rf_session_active": rf_activity["active"],
+                "rf_activity_check_available": rf_activity["available"],
+                "controls": sorted(ALLOWED_ACTIONS),
+            })
+            return
+        if route == "/api/operator/diagnostics":
+            if self._operator_session() is None:
+                self._json({"ok": False, "error": "administrator login required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            gateway = collect_gateway_status(self.server.station_config)
+            diagnostics = {
+                "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "product": "N0JCG Radio Operations Center",
+                "version": __version__,
+                "station": {
+                    "callsign": self.server.station_config["station"].get("callsign"),
+                    "site_label": self.server.station_config["station"].get("site_label"),
+                },
+                "system": collect_system_status(),
+                "gateway": gateway,
+                "operator": {
+                    "maintenance_mode": self.server.maintenance_path.exists(),
+                    "recent_audit": recent_audit(self.server.operator_audit_path),
+                },
+                "privacy": "Message bodies, subjects, recipients, credentials, and environment variables are excluded.",
+            }
+            self._download_json(diagnostics, "n0jcg-roc-diagnostics.json")
+            return
+        if route == "/api/weather":
+            self._json(read_weather_status())
+            return
+        if route == "/api/applications":
+            self._json(collect_application_status(self.server.application_settings_path))
             return
         self._static(route)
 
     def do_POST(self) -> None:  # noqa: N802 - standard library handler API
-        if urlparse(self.path).path.startswith("/air-traffic/api/"):
-            self._proxy_air_traffic("POST")
+        route = urlparse(self.path).path
+        if route in {"/api/license/activate", "/api/registration/activate"}:
+            try:
+                registration = self.server.trial_controller.activate(self._read_json(4096))
+                self._json({"ok": True, "registration": registration})
+            except ConnectionError as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_GATEWAY)
+            except (LicenseError, ValueError, TypeError, json.JSONDecodeError, UnicodeError, OSError) as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
             return
-        if urlparse(self.path).path.startswith("/pi-scanner/api/"):
-            self._proxy_path("/pi-scanner", PI_SCANNER_REMOTE_URL, "POST")
+        if route in {"/api/license/trial/reset", "/api/registration/trial/reset"}:
+            try:
+                self._json({"ok": True, "registration": self.server.trial_controller.reset_trial()})
+            except (LicenseError, ValueError, OSError) as error:
+                self._json(
+                    {"ok": False, "error": str(error), "registration": self.server.trial_controller.status(start_trial=False)},
+                    HTTPStatus.CONFLICT,
+                )
+            return
+        if route == "/api/operator/login":
+            if not self.server.operator_auth.configured:
+                self._json({"ok": False, "error": "operator controls are not configured"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                return
+            if not self._login_allowed():
+                append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="login", result="rate_limited")
+                self._json({"ok": False, "error": "too many login attempts; try again later"}, HTTPStatus.TOO_MANY_REQUESTS)
+                return
+            try:
+                payload = self._read_json(2048)
+                password = str(payload.get("password", ""))
+            except (ValueError, TypeError, json.JSONDecodeError, UnicodeError) as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+                return
+            if not self.server.operator_auth.verify_password(password):
+                self._record_login_failure()
+                append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="login", result="denied")
+                self._json({"ok": False, "error": "invalid administrator password"}, HTTPStatus.UNAUTHORIZED)
+                return
+            self._clear_login_failures()
+            token, csrf_token, max_age = self.server.operator_auth.issue_session()
+            append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="login", result="success")
+            self._json(
+                {"ok": True, "authenticated": True, "csrf_token": csrf_token, "expires_in_seconds": max_age},
+                headers={"Set-Cookie": f"n0jcg_operator={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}"},
+            )
+            return
+        if route == "/api/operator/logout":
+            session = self._operator_session(require_csrf=True)
+            if session is None:
+                self._json({"ok": False, "error": "valid administrator session required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="logout", result="success")
+            self._json(
+                {"ok": True, "authenticated": False},
+                headers={"Set-Cookie": "n0jcg_operator=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"},
+            )
+            return
+        if route == "/api/operator/action":
+            session = self._operator_session(require_csrf=True)
+            if session is None:
+                self._json({"ok": False, "error": "valid administrator session required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            try:
+                payload = self._read_json(2048)
+                action = str(payload.get("action", ""))
+                if action not in ALLOWED_ACTIONS:
+                    raise ValueError("operator action is not allowed")
+                if action == "cms_test":
+                    rf_activity = probe_rf_session()
+                    if not rf_activity["available"]:
+                        append_audit(self.server.operator_audit_path, remote=self.client_address[0], event=action, result="blocked", detail="RF activity unavailable")
+                        self._json({"ok": False, "error": "CMS test blocked: unable to verify that the RF channel is idle"}, HTTPStatus.CONFLICT)
+                        return
+                    if rf_activity["active"]:
+                        append_audit(self.server.operator_audit_path, remote=self.client_address[0], event=action, result="blocked", detail="active RF session")
+                        self._json({"ok": False, "error": "CMS test blocked: an RF session is active"}, HTTPStatus.CONFLICT)
+                        return
+                result = request_helper(action, self.server.operator_socket_path)
+            except (OSError, ValueError, TypeError, json.JSONDecodeError, UnicodeError) as error:
+                append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="operator_action", result="failed", detail=str(error))
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_GATEWAY)
+                return
+            append_audit(
+                self.server.operator_audit_path,
+                remote=self.client_address[0],
+                event=action,
+                result="success" if result.get("ok") else "failed",
+            )
+            self._json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_GATEWAY)
+            return
+        if route == "/api/station/settings":
+            length = int(self.headers.get("Content-Length", "0"))
+            if length > 4096:
+                self._json({"ok": False, "error": "settings payload is too large"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                settings = save_station_settings(
+                    self.server.station_settings_path,
+                    self.server.station_config["station"],
+                    payload,
+                )
+                self._json({"ok": True, **settings})
+            except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if route == "/api/weather/ingest":
+            length = int(self.headers.get("Content-Length", "0"))
+            try:
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(payload, dict):
+                    raise ValueError("JSON object required")
+                self._json({"ok": True, "observation": store_observation(payload)})
+            except (ValueError, TypeError, json.JSONDecodeError) as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if route == "/api/applications":
+            length = int(self.headers.get("Content-Length", "0"))
+            if length > 65536:
+                self._json({"ok": False, "error": "settings payload is too large"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                settings = save_application_settings(self.server.application_settings_path, payload)
+                self._json({"ok": True, **settings})
+            except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if route == "/api/aprs-map/settings":
+            length = int(self.headers.get("Content-Length", "0"))
+            if length > 4096:
+                self._json({"ok": False, "error": "settings payload is too large"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                state = save_aprsfi_settings(self.server.aprsfi_settings_path, payload)
+                self._json({"ok": True, **state})
+            except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
             return
         self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def log_message(self, format: str, *args: object) -> None:
         print(f"{self.address_string()} - {format % args}")
 
-    def _json(self, payload: object, status: HTTPStatus = HTTPStatus.OK) -> None:
+    def _read_json(self, limit: int) -> dict:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length < 0 or length > limit:
+            raise ValueError("request payload is too large")
+        payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("JSON object required")
+        return payload
+
+    def _operator_session(self, require_csrf: bool = False) -> dict | None:
+        token = session_cookie(self.headers)
+        csrf_token = self.headers.get("X-CSRF-Token") if require_csrf else None
+        if require_csrf and not csrf_token:
+            return None
+        return self.server.operator_auth.verify_session(token, csrf_token=csrf_token)
+
+    def _login_allowed(self) -> bool:
+        remote = self.client_address[0]
+        cutoff = time.monotonic() - 600
+        with self.server.login_lock:
+            attempts = [value for value in self.server.login_failures.get(remote, []) if value >= cutoff]
+            self.server.login_failures[remote] = attempts
+            return len(attempts) < 5
+
+    def _record_login_failure(self) -> None:
+        with self.server.login_lock:
+            self.server.login_failures.setdefault(self.client_address[0], []).append(time.monotonic())
+
+    def _clear_login_failures(self) -> None:
+        with self.server.login_lock:
+            self.server.login_failures.pop(self.client_address[0], None)
+
+    def _json(self, payload: object, status: HTTPStatus = HTTPStatus.OK, headers: dict[str, str] | None = None) -> None:
         content = json.dumps(payload, indent=2).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _download_json(self, payload: object, filename: str) -> None:
+        content = (json.dumps(payload, indent=2) + "\n").encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(content)))
         self.end_headers()
         self.wfile.write(content)
 
-    def _proxy_air_traffic(self, method: str) -> None:
-        self._proxy_path("/air-traffic", AIR_TRAFFIC_REMOTE_URL, method)
-
-    def _proxy_path(self, prefix: str, remote_base: str, method: str) -> None:
-        remote_path = self.path[len(prefix) :]
-        endpoint = f"{remote_base.rstrip('/')}{remote_path}"
-        body = None
-        if method == "POST":
-            length = int(self.headers.get("Content-Length", "0"))
-            body = self.rfile.read(length)
-        request_headers = {"Accept": self.headers.get("Accept", "*/*")}
-        for name in ("Content-Type", "X-PI-Audio-Stop-Guard"):
-            value = self.headers.get(name)
-            if value:
-                request_headers[name] = value
-        request = Request(endpoint, data=body, method=method, headers=request_headers)
-        try:
-            with urlopen(request, timeout=10) as response:
-                if prefix == "/pi-scanner/audio-api":
-                    self._stream_proxy_response(response)
-                    return
-                content = response.read()
-                content_type = response.headers.get("Content-Type", "application/octet-stream")
-                self.send_response(response.status)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Cache-Control", "no-store")
-                for name, value in response.headers.items():
-                    if name.lower().startswith("x-"):
-                        self.send_header(name, value)
-                self.send_header("Content-Length", str(len(content)))
-                self.end_headers()
-                self.wfile.write(content)
-        except HTTPError as error:
-            self._json({"error": f"remote Air Traffic API returned {error.code}"}, HTTPStatus.BAD_GATEWAY)
-        except (OSError, URLError) as error:
-            self._json({"error": f"remote Air Traffic API unavailable: {error}"}, HTTPStatus.BAD_GATEWAY)
-
-    def _stream_proxy_response(self, response: object) -> None:
-        """Forward a live audio response without buffering it in memory."""
-        self.send_response(response.status)
-        self.send_header("Content-Type", response.headers.get("Content-Type", "application/octet-stream"))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Connection", "close")
-        for name, value in response.headers.items():
-            if name.lower().startswith("x-"):
-                self.send_header(name, value)
-        self.end_headers()
-        self.close_connection = True
-        while True:
-            chunk = response.read(16384)
-            if not chunk:
-                break
-            self.wfile.write(chunk)
-            self.wfile.flush()
-
     def _static(self, route: str) -> None:
-        if route in {"/air-traffic", "/air-traffic/"}:
-            relative = "air-traffic/index.html"
-        elif route in {"/pi-scanner", "/pi-scanner/"}:
-            relative = "pi-scanner/index.html"
-        else:
-            relative = "index.html" if route == "/" else route.lstrip("/")
-        candidate = (self.server.web_root / relative).resolve()
+        static_root = self.server.web_root
+        relative = "index.html" if route == "/" else route.lstrip("/")
+        candidate = (static_root / relative).resolve()
         try:
-            candidate.relative_to(self.server.web_root.resolve())
+            candidate.relative_to(static_root.resolve())
         except ValueError:
             self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
             return
@@ -227,6 +549,7 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", f"{media_type}; charset=utf-8")
         self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(content)
 
@@ -234,6 +557,21 @@ class RocRequestHandler(BaseHTTPRequestHandler):
 class RocServer(ThreadingHTTPServer):
     web_root: Path
     station_config: dict
+    application_settings_path: Path
+    aprsfi_settings_path: Path
+    aprsfi_cache_path: Path
+    station_settings_path: Path
+    operator_auth: OperatorAuth
+    operator_audit_path: Path
+    operator_socket_path: Path
+    maintenance_path: Path
+    login_failures: dict[str, list[float]]
+    login_lock: threading.Lock
+    trial_controller: RocTrialController
+
+    def server_close(self) -> None:
+        self.trial_controller.close()
+        super().server_close()
 
 
 def create_server(
@@ -242,10 +580,42 @@ def create_server(
     *,
     web_root: Path = DEFAULT_WEB_ROOT,
     config_path: Path = DEFAULT_CONFIG_PATH,
+    application_settings_path: Path = DEFAULT_APPLICATION_SETTINGS_PATH,
+    aprsfi_settings_path: Path = DEFAULT_APRSFI_SETTINGS_PATH,
+    aprsfi_cache_path: Path = DEFAULT_APRSFI_CACHE_PATH,
+    station_settings_path: Path = DEFAULT_STATION_SETTINGS_PATH,
+    operator_auth: OperatorAuth | None = None,
+    operator_audit_path: Path = DEFAULT_OPERATOR_AUDIT_PATH,
+    operator_socket_path: Path = DEFAULT_OPERATOR_SOCKET_PATH,
+    maintenance_path: Path = DEFAULT_MAINTENANCE_PATH,
+    license_state_path: Path = DEFAULT_LICENSE_STATE_PATH,
+    trial_controller: RocTrialController | None = None,
 ) -> RocServer:
     server = RocServer((host, port), RocRequestHandler)
     server.web_root = web_root
     server.station_config = load_station_config(config_path)
+    server.application_settings_path = application_settings_path
+    server.aprsfi_settings_path = aprsfi_settings_path
+    server.aprsfi_cache_path = aprsfi_cache_path
+    server.station_settings_path = station_settings_path
+    server.operator_auth = operator_auth or OperatorAuth(
+        os.environ.get("ROC_OPERATOR_PASSWORD_HASH", ""),
+        os.environ.get("ROC_OPERATOR_SESSION_SECRET", ""),
+    )
+    server.operator_audit_path = operator_audit_path
+    server.operator_socket_path = operator_socket_path
+    server.maintenance_path = maintenance_path
+    def enforce_trial_service_access(enabled: bool) -> None:
+        result = set_trial_services_enabled(enabled, server.operator_socket_path)
+        if not result.get("ok"):
+            raise OSError(str(result.get("error") or "trial service operation failed"))
+
+    server.trial_controller = trial_controller or RocTrialController(
+        LicenseClient(app_version=__version__, state_root=license_state_path),
+        service_access_changed=enforce_trial_service_access,
+    )
+    server.login_failures = {}
+    server.login_lock = threading.Lock()
     return server
 
 

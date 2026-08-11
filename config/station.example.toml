@@ -1,17 +1,17 @@
 [station]
-name = "N0JCG Radio Operations Center"
-callsign = "N0JCG"
+name = "N0JCG Gateway"
+callsign = "N0CALL"
 linux_user = "n0jcg"
-site_label = "Cripple Creek, Colorado"
-grid_square = "DM78JT"
-latitude = 38.800788
-longitude = -105.2001
+site_label = "Configure station location"
+grid_square = "AA00AA"
+latitude = 0.0
+longitude = 0.0
 
 [server]
 hostname = "n0jcg-roc"
-lan_address = "192.168.68.145"
+lan_address = "192.0.2.10"
 listen_address = "0.0.0.0"
-listen_port = 8095
+listen_port = 80
 
 [safety]
 transmit_enabled = false
@@ -19,5 +19,5 @@ gateway_frequency_hz = 0
 coordination_confirmed = false
 
 [identities]
-winlink_rms = "N0JCG-10"
-aprs_igate = "N0JCG-5"
+winlink_rms = "N0CALL-10"
+aprs_igate = "N0CALL-5"

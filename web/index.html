@@ -3,81 +3,367 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>N0JCG Radio Operations Center</title>
-    <link rel="stylesheet" href="/styles.css">
+    <meta name="theme-color" content="#0A1F44">
+    <title>N0JCG Gateway | Radio Operations Center</title>
+    <link rel="icon" href="/assets/N0JCG_Icon_Approved.png" type="image/png">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynHTlfQpZQ7Gok04p2rQjMZgq7dQ=" crossorigin="">
+    <link rel="stylesheet" href="/styles.css?v=20260810-registration">
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">N0JCG</p>
-        <h1>Radio Operations Center</h1>
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand-lockup" href="#overview" aria-label="N0JCG Gateway overview">
+          <img src="/assets/N0JCG_Header_Dark_Approved.png" alt="N0JCG Open Radio Platform">
+        </a>
+        <div class="product-context">
+          <strong>N0JCG Gateway</strong>
+          <span>Radio Operations Center</span>
+        </div>
+        <div class="header-state">
+          <button id="registration-trial-button" class="trial-button" type="button" hidden>
+            <span class="trial-button-label">Restart Trial</span>
+            <strong id="registration-trial-badge">5:00</strong>
+          </button>
+          <span id="system-badge" class="n0-status n0-status--unknown">Connecting</span>
+        </div>
+      </header>
+
+      <aside class="app-rail" aria-label="ROC navigation">
+        <div class="rail-product">
+          <img src="/assets/N0JCG_Icon_Approved.png" alt="">
+          <div><strong>Gateway</strong><span>Operations</span></div>
+        </div>
+        <nav>
+          <a href="#overview" aria-current="page"><span aria-hidden="true">⌂</span>Overview</a>
+          <a href="#aprs-activity"><span aria-hidden="true">⌖</span>APRS</a>
+          <a href="#winlink-gateway"><span aria-hidden="true">WL</span>Winlink</a>
+          <a href="#radio-services"><span aria-hidden="true">⌁</span>Radio services</a>
+          <a href="#weather-monitor"><span aria-hidden="true">☼</span>Weather</a>
+          <a href="#system-readiness"><span aria-hidden="true">▦</span>System</a>
+          <a href="#applications"><span aria-hidden="true">↗</span>Applications</a>
+          <a href="#registration"><span aria-hidden="true">ID</span>Registration</a>
+          <a href="#operator-controls"><span aria-hidden="true">OP</span>Operator</a>
+          <a href="#application-settings"><span aria-hidden="true">⚙</span>Configuration</a>
+        </nav>
+        <div class="rail-footer">
+          <span>Open Radio Platform</span>
+          <strong>N0JCG-ROC <span id="version">starting</span></strong>
+        </div>
+      </aside>
+
+      <main class="app-main">
+        <section id="overview" class="page-intro">
+          <div>
+            <p class="eyebrow">Station overview</p>
+            <h1 id="site-name">Cripple Creek, Colorado</h1>
+            <p>Shared radio, network, weather, and station services with explicit operating state.</p>
+          </div>
+          <div class="interlock" id="interlock">
+            <span class="interlock-icon" aria-hidden="true">TX</span>
+            <div><strong>Checking RMS state</strong><small>Loading commissioned gateway status</small></div>
+          </div>
+        </section>
+
+        <section id="trial-expired-notice" class="trial-notice" hidden aria-live="polite">
+          <div><strong>Five-minute trial ended</strong><span>APRS, Weather, and Winlink services are stopped. Register this Gateway or restart the trial to resume operation.</span></div>
+          <button id="trial-notice-restart" class="n0-button n0-button--primary" type="button">Restart Trial</button>
+        </section>
+
+        <section class="summary-grid" aria-label="Live operating summary">
+          <article class="summary-card">
+            <div class="card-heading"><span>APRS listener</span><span class="live-label">Live</span></div>
+            <strong id="metric-aprs">—</strong>
+            <small id="metric-aprs-detail">Checking receiver ownership</small>
+          </article>
+          <article class="summary-card">
+            <div class="card-heading"><span>Decoded frames</span></div>
+            <strong id="metric-aprs-packets">—</strong>
+            <small id="metric-aprs-packets-detail">Checking packet log</small>
+          </article>
+          <article class="summary-card">
+            <div class="card-heading"><span>Air traffic</span></div>
+            <strong id="metric-air-traffic">—</strong>
+            <small id="metric-air-traffic-detail">Checking application</small>
+          </article>
+          <article class="summary-card">
+            <div class="card-heading"><span>Weather station</span></div>
+            <strong id="metric-weather">—</strong>
+            <small id="metric-weather-detail">Waiting for GW1100/WS90 data</small>
+          </article>
+        </section>
+
+        <section id="aprs-activity" class="content-section latest-frame-panel" aria-labelledby="latest-frame-heading">
+          <div class="section-heading compact-heading">
+            <div><p class="eyebrow">APRS activity</p><h2 id="latest-frame-heading">Latest APRS frame</h2></div>
+            <span class="technical-label">144.390 MHz</span>
+          </div>
+          <div class="frame-readout">
+            <strong id="metric-aprs-latest">—</strong>
+            <small id="metric-aprs-latest-detail">Waiting for a decoded packet</small>
+          </div>
+        </section>
+
+        <section id="aprs-map-section" class="content-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">Stations heard by ROC</p><h2>APRS activity map</h2></div>
+            <div class="map-actions"><button id="aprs-map-zoom-out" class="n0-button n0-button--secondary map-control" type="button">Zoom out</button><button id="aprs-map-zoom-in" class="n0-button n0-button--secondary map-control" type="button">Zoom in</button><button id="aprs-map-roc-area" class="n0-button n0-button--secondary" type="button">ROC area</button><button id="aprs-map-show-all" class="n0-button n0-button--secondary" type="button" hidden>Show all positions</button><button id="aprs-map-refresh" class="n0-button n0-button--secondary" type="button">Refresh positions</button></div>
+          </div>
+          <div class="aprs-map-panel">
+            <div id="aprs-map" role="region" aria-label="Map of APRS stations received by ROC"></div>
+            <div id="aprs-map-message" class="aprs-map-message">Loading recently heard callsigns…</div>
+          </div>
+          <div class="aprs-map-footer"><span id="aprs-map-summary">Waiting for position data</span><span>Position data from <a href="https://aprs.fi/" target="_blank" rel="noopener">aprs.fi</a> · Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></span></div>
+        </section>
+
+        <section id="winlink-gateway" class="content-section" aria-labelledby="winlink-heading">
+          <div class="section-heading">
+            <div><p class="eyebrow">Packet gateway operations</p><h2 id="winlink-heading">Winlink Gateway</h2></div>
+            <p id="winlink-updated">Loading live gateway evidence</p>
+          </div>
+          <div class="winlink-grid" aria-live="polite">
+            <article class="winlink-card winlink-card--status">
+              <div class="winlink-card-heading"><span>Gateway status</span><span id="winlink-state" class="n0-status n0-status--unknown">Checking</span></div>
+              <strong id="winlink-rms-call">N0JCG-10</strong>
+              <p id="winlink-channel">145.070 MHz · Packet 1200</p>
+              <dl class="winlink-facts">
+                <div><dt>LinBPQ node</dt><dd id="winlink-node-call">—</dd></div>
+                <div><dt>Post Office</dt><dd id="winlink-post-office-call">—</dd></div>
+                <div><dt>LinBPQ</dt><dd id="winlink-linbpq-state">—</dd></div>
+                <div><dt>Dire Wolf</dt><dd id="winlink-direwolf-state">—</dd></div>
+              </dl>
+            </article>
+
+            <article class="winlink-card">
+              <div class="winlink-card-heading"><span>Last RF session</span><span id="winlink-session-result" class="technical-label">Waiting</span></div>
+              <strong id="winlink-session-caller">—</strong>
+              <p id="winlink-session-time">No completed RF session recorded</p>
+              <dl class="winlink-facts">
+                <div><dt>Messages</dt><dd id="winlink-session-messages">—</dd></div>
+                <div><dt>Transfer</dt><dd id="winlink-session-bytes">—</dd></div>
+                <div><dt>Duration</dt><dd id="winlink-session-duration">—</dd></div>
+                <div><dt>CMS</dt><dd id="winlink-cms-state">—</dd></div>
+              </dl>
+              <button id="winlink-history-open" class="n0-button n0-button--secondary winlink-history-button" type="button">View session history</button>
+            </article>
+
+            <article class="winlink-card">
+              <div class="winlink-card-heading"><span>Message traffic</span><span class="technical-label">BPQMail index</span></div>
+              <p class="winlink-queue-description">Status metadata from the local Post Office; message contents remain private.</p>
+              <dl class="winlink-facts winlink-queue-facts">
+                <div><dt>Pending</dt><dd id="winlink-mail-pending">—</dd></div>
+                <div><dt>Delivered</dt><dd id="winlink-mail-delivered">—</dd></div>
+                <div><dt>Received</dt><dd id="winlink-mail-received">—</dd></div>
+                <div><dt>Archived</dt><dd id="winlink-mail-archived">—</dd></div>
+              </dl>
+              <small class="privacy-note">Received is cumulative and can overlap Archived after a message is retrieved.</small>
+            </article>
+
+            <article class="winlink-card">
+              <div class="winlink-card-heading"><span>Commissioning status</span><span class="technical-label">Persistent proof</span></div>
+              <ul class="commissioning-list">
+                <li data-winlink-milestone="rf_path_verified"><span>RF transmit and receive path</span><strong>Checking</strong></li>
+                <li data-winlink-milestone="cms_authentication_verified"><span>CMS authentication</span><strong>Checking</strong></li>
+                <li data-winlink-milestone="outbound_message_verified"><span>Outbound message transfer</span><strong>Checking</strong></li>
+                <li data-winlink-milestone="inbound_message_verified"><span>Inbound message transfer</span><strong>Checking</strong></li>
+                <li data-winlink-milestone="public_channel_report_verified"><span>Public channel report</span><strong>Checking</strong></li>
+              </ul>
+            </article>
+          </div>
+          <div class="winlink-activity-panel">
+            <div class="winlink-card-heading"><span>Last 24 hours</span><span id="winlink-activity-window" class="technical-label">Rolling window</span></div>
+            <div class="winlink-stat-grid">
+              <div><span>RF sessions</span><strong id="winlink-stat-sessions">—</strong></div>
+              <div><span>Unique callsigns</span><strong id="winlink-stat-callsigns">—</strong></div>
+              <div><span>Success rate</span><strong id="winlink-stat-success">—</strong></div>
+              <div><span>Average duration</span><strong id="winlink-stat-duration">—</strong></div>
+              <div><span>Messages sent</span><strong id="winlink-stat-sent">—</strong></div>
+              <div><span>Messages received</span><strong id="winlink-stat-received">—</strong></div>
+            </div>
+            <div id="winlink-hourly-chart" class="winlink-hourly-chart" role="img" aria-label="Winlink RF sessions by hour over the last 24 hours"></div>
+          </div>
+          <div class="winlink-activity-panel winlink-reliability-panel">
+            <div class="winlink-card-heading"><span>Gateway reliability</span><span id="winlink-reliability-state" class="n0-status n0-status--unknown">Checking</span></div>
+            <div class="winlink-reliability-grid">
+              <div><span>RMS uptime</span><strong id="winlink-rms-uptime">—</strong><small id="winlink-rms-restarts">—</small></div>
+              <div><span>Modem uptime</span><strong id="winlink-modem-uptime">—</strong><small id="winlink-modem-restarts">—</small></div>
+              <div><span>CMS connections</span><strong id="winlink-cms-connections">—</strong><small>Successful in 24 hours</small></div>
+              <div><span>CMS attempts failed</span><strong id="winlink-cms-failures">—</strong><small id="winlink-cms-last-event">No recent event</small></div>
+              <div><span>Modem faults</span><strong id="winlink-modem-faults">—</strong><small>Recognized faults in 24 hours</small></div>
+            </div>
+            <p class="privacy-note">Operational events only. Message content and credentials are excluded.</p>
+          </div>
+        </section>
+
+        <section id="radio-services" class="content-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">Device ownership</p><h2>Radio services</h2></div>
+            <p>Observed state from independent RF nodes</p>
+          </div>
+          <div class="service-grid" id="service-grid" aria-live="polite"></div>
+        </section>
+
+        <section id="weather-monitor" class="content-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">GW1100 / WS90</p><h2>Weather monitor</h2></div>
+            <p id="weather-updated">Waiting for gateway</p>
+          </div>
+          <div class="weather-grid" aria-live="polite">
+            <article class="weather-card weather-primary"><span>Outdoor temperature</span><strong id="weather-temperature">—</strong><small id="weather-outdoor-state">WS90 not detected</small></article>
+            <article class="weather-card"><span>Outdoor humidity</span><strong id="weather-humidity">—</strong><small>Relative humidity</small></article>
+            <article class="weather-card"><span>Wind</span><strong id="weather-wind">—</strong><small id="weather-wind-detail">Direction and gust</small></article>
+            <article class="weather-card"><span>Barometric pressure</span><strong id="weather-pressure">—</strong><small id="weather-pressure-detail">Relative and absolute pressure</small></article>
+            <article class="weather-card"><span>Rain</span><strong id="weather-rain">—</strong><small id="weather-rain-detail">Today</small></article>
+            <article class="weather-card"><span>UV / solar</span><strong id="weather-uv">—</strong><small id="weather-solar">—</small></article>
+            <article class="weather-card"><span>Gateway indoor</span><strong id="weather-indoor">—</strong><small id="weather-indoor-detail">GW1100 sensor</small></article>
+            <article class="weather-card"><span>Gateway</span><strong id="weather-gateway">Checking</strong><small id="weather-gateway-detail">192.168.68.131</small></article>
+          </div>
+        </section>
+
+        <section id="system-readiness" class="content-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">ROC server</p><h2>System readiness</h2></div>
+            <p id="hardware-state">Checking hardware</p>
+          </div>
+          <div class="metric-grid" id="metric-grid" aria-live="polite">
+            <article class="metric-card"><span>Host</span><strong id="metric-host">—</strong><small id="metric-platform">—</small></article>
+            <article class="metric-card"><span>Uptime</span><strong id="metric-uptime">—</strong><small id="metric-load">—</small></article>
+            <article class="metric-card"><span>Memory available</span><strong id="metric-memory">—</strong><small id="metric-memory-total">—</small></article>
+            <article class="metric-card"><span>Disk free</span><strong id="metric-disk">—</strong><small id="metric-disk-total">—</small></article>
+            <article class="metric-card"><span>Radio tools</span><strong id="metric-tools">—</strong><small id="metric-tools-detail">—</small></article>
+            <article class="metric-card"><span>Attached RF paths</span><strong id="metric-hardware">—</strong><small id="metric-hardware-detail">—</small></article>
+            <article class="metric-card"><span>Aircraft tracked</span><strong id="metric-aircraft">—</strong><small id="metric-aircraft-detail">Remote ADS-B/UAT data</small></article>
+            <article class="metric-card"><span>Voice calls</span><strong id="metric-voice-calls">—</strong><small id="metric-voice-calls-detail">Scanner activity</small></article>
+            <article class="metric-card"><span>VHF locks</span><strong id="metric-vhf-locks">—</strong><small id="metric-vhf-locks-detail">VHF analog scanner</small></article>
+            <article class="metric-card"><span>UHF locks</span><strong id="metric-uhf-locks">—</strong><small id="metric-uhf-locks-detail">UHF analog scanner</small></article>
+          </div>
+        </section>
+
+        <section id="applications" class="content-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">Platform applications</p><h2>Operational centers</h2></div>
+            <p>Standalone applications on independent Pi systems</p>
+          </div>
+          <div class="application-grid">
+            <article class="application-card" data-application-card="air_traffic">
+              <img src="/assets/N0JCG_Icon_Approved.png" alt="">
+              <div><h3>N0JCG Air Traffic Center</h3><p>Aviation SDR monitoring, tracking, maps, and NOAA weather radio.</p><span class="application-state" data-application-state="air_traffic">Checking</span><a id="air-traffic-link" class="n0-button n0-button--primary" href="#">Open Air Traffic Center</a></div>
+            </article>
+            <article class="application-card" data-application-card="scanner">
+              <img src="/assets/N0JCG_Icon_Approved.png" alt="">
+              <div><h3>N0JCG Scanner</h3><p>P25, VHF, and UHF receiver control and audio monitoring.</p><span class="application-state" data-application-state="scanner">Checking</span><a id="scanner-link" class="n0-button n0-button--primary" href="#">Open Scanner</a></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="registration" class="content-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">Product registration</p><h2>N0JCG Gateway license</h2></div>
+            <span id="registration-state" class="n0-status n0-status--unknown">Checking</span>
+          </div>
+          <div class="registration-panel">
+            <div class="registration-summary">
+              <div><span>Installation S/N</span><strong id="registration-serial">Loading…</strong></div>
+              <p id="registration-status-text">Checking registration and trial status.</p>
+            </div>
+            <form id="registration-form" class="registration-form">
+              <label>License S/N<input name="license_serial" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="N0JCG-GTW-XXXX-XXXX-XXXX-XXXX" required></label>
+              <label>Registered email<input name="email" type="email" autocomplete="email" placeholder="operator@example.com" required></label>
+              <button id="registration-activate" class="n0-button n0-button--primary" type="submit">Activate license</button>
+            </form>
+            <output id="registration-result" class="registration-result" aria-live="polite"></output>
+          </div>
+        </section>
+
+        <section id="operator-controls" class="content-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">ROC administration</p><h2>Protected operator controls</h2></div>
+            <span id="operator-auth-state" class="n0-status n0-status--unknown">Checking</span>
+          </div>
+          <div class="winlink-activity-panel operator-panel">
+            <p class="operator-intro">Administrative actions are local, allowlisted, audited, and do not provide an RF transmit control.</p>
+            <form id="operator-login-form" class="operator-login" hidden>
+              <label>Administrator password<input name="password" type="password" minlength="10" autocomplete="current-password" required></label>
+              <button class="n0-button n0-button--primary" type="submit">Administrator login</button>
+            </form>
+            <div id="operator-setup-required" class="operator-setup" hidden>
+              <strong>Administrator setup required</strong>
+              <code>sudo deploy/configure_operator_controls.sh</code>
+            </div>
+            <div id="operator-actions" class="operator-actions" hidden>
+              <button class="n0-button n0-button--secondary" type="button" data-operator-action="restart">Restart gateway</button>
+              <button class="n0-button n0-button--secondary" type="button" data-operator-action="maintenance_on">Enter maintenance</button>
+              <button class="n0-button n0-button--primary" type="button" data-operator-action="maintenance_off">Return gateway online</button>
+              <button class="n0-button n0-button--secondary" type="button" data-operator-action="cms_test">Test CMS connection</button>
+              <button id="operator-diagnostics" class="n0-button n0-button--secondary" type="button">Download diagnostics</button>
+              <button id="operator-logout" class="n0-button n0-button--text" type="button">Sign out</button>
+            </div>
+            <small id="operator-cms-guard" class="operator-guard">CMS testing is available only when LinBPQ confirms that no RF session is active.</small>
+            <output id="operator-result" class="operator-result" aria-live="polite"></output>
+          </div>
+        </section>
+
+        <section id="application-settings" class="content-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">ROC configuration</p><h2>Application connections</h2></div>
+            <p>Enable each application and identify the Pi that runs it</p>
+          </div>
+          <div class="settings-grid">
+            <form id="station-settings-form" class="settings-card settings-card--wide">
+              <div class="settings-card-header"><div><h3>Station overview</h3><small>Include the amateur-radio callsign and the station location or description</small></div></div>
+              <div class="settings-fields settings-fields--key"><label>Station overview title<input name="overview_title" type="text" maxlength="120" autocomplete="off" required placeholder="N0JCG · Cripple Creek, Colorado"></label></div>
+              <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save Station Overview</button><output aria-live="polite"></output></div>
+            </form>
+            <form class="settings-card" data-application-form="air_traffic">
+              <div class="settings-card-header"><div><h3>N0JCG Air Traffic Center</h3><small>Default service port 8090</small></div><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div>
+              <div class="settings-fields"><label>Pi IP address or hostname<input name="host" type="text" inputmode="url" autocomplete="off" required></label><label>Web port<input name="port" type="number" min="1" max="65535" required></label></div>
+              <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save Air Traffic settings</button><output aria-live="polite"></output></div>
+            </form>
+            <form class="settings-card" data-application-form="scanner">
+              <div class="settings-card-header"><div><h3>N0JCG Scanner</h3><small>Default service port 8070</small></div><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div>
+              <div class="settings-fields"><label>Pi IP address or hostname<input name="host" type="text" inputmode="url" autocomplete="off" required></label><label>Web port<input name="port" type="number" min="1" max="65535" required></label></div>
+              <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save Scanner settings</button><output aria-live="polite"></output></div>
+            </form>
+            <form id="aprsfi-settings-form" class="settings-card settings-card--wide">
+              <div class="settings-card-header"><div><h3>aprs.fi map access</h3><small>The API key remains on the ROC server and is never returned to the browser</small></div><div class="integration-controls"><span id="aprsfi-configured" class="application-state">Not configured</span><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div></div>
+              <div class="settings-fields settings-fields--key"><label>aprs.fi API key<input name="api_key" type="password" autocomplete="new-password" placeholder="Enter a new key or leave blank to keep the saved key"></label></div>
+              <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save API key</button><output aria-live="polite"></output><a href="https://aprs.fi/account/" target="_blank" rel="noopener">Open aprs.fi account</a></div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <section id="aprs-frames" class="modal" hidden aria-labelledby="aprs-frames-title">
+      <div class="modal-panel" role="dialog" aria-modal="true">
+        <div class="modal-header"><div><p class="eyebrow">Packet activity</p><h2 id="aprs-frames-title">APRS frames</h2></div><button id="aprs-frames-close" type="button" aria-label="Close APRS frames">×</button></div>
+        <div class="modal-toolbar"><label>Sort <select id="aprs-sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label><span id="aprs-page-info">Page 1</span></div>
+        <div id="aprs-frame-list" class="aprs-frame-list"></div>
+        <div class="modal-footer"><button id="aprs-prev" class="n0-button n0-button--secondary" type="button">Previous</button><button id="aprs-next" class="n0-button n0-button--primary" type="button">Next</button></div>
       </div>
-      <div id="system-badge" class="badge neutral">Connecting</div>
-    </header>
+    </section>
 
-    <main>
-      <section class="hero">
-        <div>
-          <p class="eyebrow">Station overview</p>
-          <h2 id="site-name">Cripple Creek, Colorado</h2>
-          <p class="lede">One station view. Independent RF nodes. Deliberate transmit control.</p>
+    <section id="winlink-sessions" class="modal" hidden aria-labelledby="winlink-sessions-title">
+      <div class="modal-panel modal-panel--wide" role="dialog" aria-modal="true">
+        <div class="modal-header"><div><p class="eyebrow">Gateway activity</p><h2 id="winlink-sessions-title">Winlink RF sessions</h2></div><button id="winlink-sessions-close" type="button" aria-label="Close Winlink session history">×</button></div>
+        <div class="modal-toolbar winlink-session-toolbar">
+          <label>Sort <select id="winlink-session-sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>
+          <label>Result <select id="winlink-session-result-filter"><option value="all">All sessions</option><option value="successful">Successful</option><option value="failed">Failed</option></select></label>
+          <label>Callsign <input id="winlink-session-callsign" type="search" maxlength="12" autocomplete="off" placeholder="All callsigns"></label>
+          <button id="winlink-session-filter" class="n0-button n0-button--secondary" type="button">Apply</button>
+          <span id="winlink-session-page-info">Page 1</span>
         </div>
-        <div class="interlock" id="interlock">
-          <span class="interlock-light"></span>
-          <div><strong>Transmit locked</strong><small>Loading safety state</small></div>
+        <div class="winlink-session-table-wrap">
+          <table class="winlink-session-table">
+            <thead><tr><th>Time</th><th>Callsign</th><th>Result</th><th>Duration</th><th>Messages</th><th>Transfer</th></tr></thead>
+            <tbody id="winlink-session-list"></tbody>
+          </table>
         </div>
-      </section>
+        <p class="privacy-note">Operational metadata only. Message subjects, recipients, bodies, and credentials are excluded.</p>
+        <div class="modal-footer"><button id="winlink-session-prev" class="n0-button n0-button--secondary" type="button">Previous</button><button id="winlink-session-next" class="n0-button n0-button--primary" type="button">Next</button></div>
+      </div>
+    </section>
 
-      <section>
-        <div class="section-heading">
-          <div><p class="eyebrow">Live inventory</p><h2>Radio services</h2></div>
-          <p>Phase 0 foundation</p>
-        </div>
-        <div class="service-grid" id="service-grid" aria-live="polite"></div>
-      </section>
-
-      <section>
-        <div class="section-heading">
-          <div><p class="eyebrow">Server baseline</p><h2>System readiness</h2></div>
-          <p id="hardware-state">Checking hardware</p>
-        </div>
-        <div class="metric-grid" id="metric-grid" aria-live="polite">
-          <article class="metric-card"><span>Host</span><strong id="metric-host">—</strong><small id="metric-platform">—</small></article>
-          <article class="metric-card"><span>Uptime</span><strong id="metric-uptime">—</strong><small id="metric-load">—</small></article>
-          <article class="metric-card"><span>Memory available</span><strong id="metric-memory">—</strong><small id="metric-memory-total">—</small></article>
-          <article class="metric-card"><span>Disk free</span><strong id="metric-disk">—</strong><small id="metric-disk-total">—</small></article>
-          <article class="metric-card"><span>Radio tools</span><strong id="metric-tools">—</strong><small id="metric-tools-detail">—</small></article>
-          <article class="metric-card"><span>Attached RF paths</span><strong id="metric-hardware">—</strong><small id="metric-hardware-detail">—</small></article>
-          <article class="metric-card"><span>APRS listener</span><strong id="metric-aprs">—</strong><small id="metric-aprs-detail">—</small></article>
-          <article class="metric-card"><span>APRS packets</span><strong id="metric-aprs-packets">—</strong><small id="metric-aprs-packets-detail">—</small></article>
-          <article class="metric-card"><span>Latest APRS frame</span><strong id="metric-aprs-latest">—</strong><small id="metric-aprs-latest-detail">Waiting for a decoded packet</small></article>
-          <article class="metric-card"><span>N0JCG Air Traffic</span><strong id="metric-air-traffic">—</strong><small id="metric-air-traffic-detail">Checking remote application</small></article>
-          <article class="metric-card"><span>Aircraft tracked</span><strong id="metric-aircraft">—</strong><small id="metric-aircraft-detail">Remote ADS-B/UAT data</small></article>
-        </div>
-      </section>
-
-      <section class="next-step">
-        <p class="eyebrow">Next controlled milestone</p>
-        <h2>Receive first. Measure before transmitting.</h2>
-        <p>Detect the DigiRig and SDR hardware, establish stable device ownership, bring up the APRS receive-only path, and survey candidate packet channels.</p>
-      </section>
-
-      <section class="next-step">
-        <p class="eyebrow">N0JCG service</p>
-        <h2>N0JCG Air Traffic Center</h2>
-        <p>The N0JCG Air Traffic node owns the aviation SDRs and decoders. The ROC monitors its API without claiming those devices.</p>
-        <a id="air-traffic-link" href="http://192.168.68.137:8090/" target="_blank" rel="noopener">Open N0JCG Air Traffic Center</a>
-      </section>
-
-      <section class="next-step">
-        <p class="eyebrow">N0JCG service</p>
-        <h2>N0JCG Scanner</h2>
-        <p>The N0JCG Scanner node owns the P25, VHF, and UHF receivers. The ROC serves this same operator interface locally.</p>
-        <a href="/pi-scanner/">Open N0JCG Scanner</a>
-      </section>
-    </main>
-
-    <footer>N0JCG-ROC <span id="version">starting</span></footer>
-    <script src="/app.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="/app.js?v=20260810-registration"></script>
   </body>
 </html>

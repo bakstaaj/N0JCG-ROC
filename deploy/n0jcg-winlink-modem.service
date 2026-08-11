@@ -1,0 +1,21 @@
+[Unit]
+Description=N0JCG Winlink Dire Wolf modem
+After=sound.target network.target
+ConditionPathExists=/etc/n0jcg/winlink-rms-approved
+ConditionPathExists=/etc/n0jcg/winlink-direwolf.conf
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+SupplementaryGroups=audio dialout
+ExecStart=/usr/bin/direwolf -t 0 -c /etc/n0jcg/winlink-direwolf.conf
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

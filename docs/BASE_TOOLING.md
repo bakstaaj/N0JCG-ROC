@@ -22,12 +22,23 @@ Ubuntu installed 42 new packages including dependencies, using approximately
 - Direwolf has no station configuration and is not active.
 - No systemd radio service was enabled.
 - The DigiRig Mobile is detected as a CP2102N serial interface and C-Media USB Audio capture/playback device.
-- The RTL dongle is detected as Realtek RTL2838/R820T, EEPROM serial `00000144`.
+- The RTL dongle is detected as Realtek RTL2838/R820T, EEPROM serial `00014439`.
 - `n0jcg` is a member of `dialout` and `audio`; no modem process owns either interface.
 - No RTL-SDR is present yet.
 - No frequency, modem channel, PTT method, APRS-IS login, or Winlink service
   configuration was created.
 - The ROC transmit interlock remains locked.
+
+The commissioned DigiRig receive baseline uses AnyTone volume `10`, C-Media
+capture level `26%` (`-3.00 dB`), and USB audio automatic gain control off. An
+open-squelch 48 kHz capture measured approximately `-16.4 dBFS` RMS and
+`-6.9 dBFS` peak without clipping. Revalidate these levels after changing the
+radio volume, DigiRig cable, or USB audio device.
+
+On 2026-08-10, the receive-only commissioning profile decoded an
+`N0JCG-2>APBTUV` frame through the AnyTone and DigiRig. Dire Wolf reported 48
+kHz input, zero sample errors, and receive audio level 71. The profile had no
+PTT configuration and its AGW/KISS listeners were disabled.
 
 ## Validation
 

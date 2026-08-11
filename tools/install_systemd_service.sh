@@ -21,7 +21,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now n0jcg-roc.service
 
 for attempt in 1 2 3 4 5; do
-  if curl -fsS http://127.0.0.1:8095/api/health >/dev/null; then
+  if curl -fsS http://127.0.0.1:80/api/health >/dev/null; then
     systemctl --no-pager --full status n0jcg-roc.service
     echo 'FINAL: PASS'
     exit 0

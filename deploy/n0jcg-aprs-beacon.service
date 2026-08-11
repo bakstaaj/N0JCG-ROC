@@ -1,0 +1,18 @@
+[Unit]
+Description=N0JCG guarded APRS Pluto position beacon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
+EnvironmentFile=-/etc/n0jcg/aprs-beacon.env
+ExecStart=/usr/bin/python3 /home/n0jcg/sdrdev/N0JCG-ROC/tools/aprs_beacon_scheduler.py
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">N0JCG Open Radio Platform icon</title>
+  <desc id="desc">A network horizon, antenna mast, and three radio signal arcs in blue and cyan.</desc>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M34 174 Q128 78 222 174" stroke="#1565C0" stroke-width="12"/>
+    <path d="M62 174 Q128 112 194 174" stroke="#00B8D9" stroke-width="8" opacity=".86"/>
+    <path d="M128 170V104" stroke="#0A1F44" stroke-width="12"/>
+    <path d="M104 174L128 130l24 44" stroke="#0A1F44" stroke-width="12"/>
+    <path d="M94 92 Q128 58 162 92" stroke="#1565C0" stroke-width="9"/>
+    <path d="M108 72 Q128 52 148 72" stroke="#00B8D9" stroke-width="8"/>
+  </g>
+  <circle cx="34" cy="174" r="14" fill="#1565C0"/>
+  <circle cx="128" cy="174" r="14" fill="#00B8D9"/>
+  <circle cx="222" cy="174" r="14" fill="#1565C0"/>
+</svg>

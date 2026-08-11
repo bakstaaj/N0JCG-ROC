@@ -1,0 +1,25 @@
+[Unit]
+Description=N0JCG GW1100 weather collector
+After=network-online.target n0jcg-roc.service
+Wants=network-online.target
+Requires=n0jcg-roc.service
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
+Environment=GW1100_URL=http://192.168.68.131
+Environment=ROC_WEATHER_INGEST_URL=http://127.0.0.1:80/api/weather/ingest
+Environment=WEATHER_POLL_SECONDS=30
+EnvironmentFile=-/etc/n0jcg/weather.env
+ExecStart=/usr/bin/python3 /home/n0jcg/sdrdev/N0JCG-ROC/tools/weather_collector.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

@@ -5,3 +5,6 @@ __pycache__/
 .server.env
 config/station.toml
 runtime/
+build/
+dist/
+docs/rendered/

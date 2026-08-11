@@ -1,79 +1,88 @@
-# N0JCG Radio Operations Center
+# N0JCG Gateway
 
-N0JCG-ROC is a modular Linux radio-station appliance for N0JCG. It will bring
-Winlink, APRS, aircraft tracking, weather, airband, scanners, RF planning, and
-system health into one operator dashboard while leaving receiver and radio
-hardware ownership with the most appropriate node.
+N0JCG Gateway is a Linux-based Radio Operations Center for Amateur Radio and
+station monitoring. Its browser dashboard brings APRS, Winlink RMS Packet,
+local weather, system health, and links to independently deployed N0JCG
+applications into one operator view.
 
-This repository currently contains the **Phase 0 foundation**:
+Version **0.1.0** is the first packaged release. It includes:
 
-- A zero-dependency Python HTTP/API service.
-- A responsive operations-dashboard shell.
-- Station and service inventory endpoints.
-- An explicit transmit safety interlock, disabled by default.
-- Architecture, roadmap, and operator-safety contracts.
-- Automated API and static-asset smoke tests.
+- an RTL-SDR APRS receiver and receive-only APRS-IS iGate path;
+- APRS frame history, station symbols, and an optional aprs.fi activity map;
+- a 1200-baud Winlink RMS Packet gateway with LinBPQ/Dire Wolf integration;
+- a LAN Winlink Post Office for Winlink Express;
+- Ecowitt GW1100/WS90 weather monitoring;
+- authenticated, audited operator controls without browser RF-test controls;
+- independent application links and read-only health summaries for N0JCG Air
+  Traffic Center and N0JCG Scanner;
+- five-minute evaluation operation and Gateway license activation; and
+- a responsive, branded operator dashboard served directly by the ROC.
 
-No radio is keyed, no gateway frequency is selected, and no external network is
-contacted by this milestone.
+## Documentation
 
-## Initial station identity
+- [End User Guide](docs/N0JCG_Gateway_End_User_Guide_v0.1.0.md)
+- [Winlink RMS commissioning](docs/WINLINK_RMS_COMMISSIONING.md)
+- [Protected operator controls](docs/OPERATOR_CONTROLS.md)
+- [APRS receive-only setup](docs/APRS_RECEIVE_ONLY.md)
+- [Development and deployment playbook](DEVELOPMENT_DEPLOYMENT_PLAYBOOK.md)
 
-| Item | Value |
-| --- | --- |
-| Project | N0JCG-ROC |
-| Operator callsign | `N0JCG` |
-| Linux account | `n0jcg` |
-| Planned Winlink RMS identity | `N0JCG-10` (approval/configuration pending) |
-| Planned APRS RX iGate identity | `N0JCG-5` |
-| Site label | Cripple Creek, Colorado |
+The GitHub release also provides a branded PDF guide, editable DOCX guide,
+release archives, and SHA-256 checksums.
 
-The private street address and exact coordinates belong in the untracked local
-file `config/station.toml`, not in Git.
+## Platform and installation model
 
-## Run locally
-
-```bash
-cd ~/sdrdev/N0JCG-ROC
-cp config/station.example.toml config/station.toml
-./tools/dev.sh
-```
-
-Open `http://127.0.0.1:8095`.
-
-Run validation with:
-
-```bash
-./tools/validate.sh
-```
-
-## Validated ROC server
-
-The initial server is `n0jcg-roc` at `192.168.68.145`, running Ubuntu 24.04.4
-LTS. After deployment, the LAN dashboard URL is:
+The supported host is Ubuntu 24.04 LTS on x86-64 with the project installed at:
 
 ```text
-http://192.168.68.145:8095
+/home/n0jcg/sdrdev/N0JCG-ROC
 ```
 
-See [docs/SERVER_BASELINE.md](docs/SERVER_BASELINE.md) for the observed
-hardware/software baseline. Credentials are never stored in this repository.
+The dashboard service uses only the Python standard library. Radio and gateway
+features additionally use the packages declared in `config/base-packages.txt`,
+including Dire Wolf, RTL-SDR utilities, ALSA tools, SoX, and LinBPQ.
 
-Development and deployment follow the checked-in
-[DEVELOPMENT_DEPLOYMENT_PLAYBOOK.md](DEVELOPMENT_DEPLOYMENT_PLAYBOOK.md). The
-base-server radio tools are declared in `config/base-packages.txt` and are
-installed only after `./tools/install_base_tools.sh --check-only` passes.
-The installed bare-server baseline is documented in
-[docs/BASE_TOOLING.md](docs/BASE_TOOLING.md).
+For a fresh appliance, follow the End User Guide. Existing development hosts
+can validate and install the dashboard with:
 
-## First hardware milestone
+```bash
+cd /home/n0jcg/sdrdev/N0JCG-ROC
+./tools/validate.sh
+./tools/install_systemd_service.sh
+```
 
-The first live milestone will be receive-only station discovery and health:
+The dashboard is then available at `http://ROC_IP/`. Configuration containing
+credentials belongs under `/etc/n0jcg/`; mutable application state belongs
+under `/var/lib/n0jcg-roc/`. Neither location is part of the release archive.
 
-1. Detect the DigiRig audio and serial/PTT interfaces without transmitting.
-2. Inventory RTL-SDR receivers by EEPROM serial rather than Linux device index.
-3. Add APRS receive-only monitoring on 144.390 MHz.
-4. Survey coordinated packet-channel candidates before configuring RMS transmit.
+## Independent operational applications
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+N0JCG Air Traffic Center and N0JCG Scanner remain in their own repositories and
+run independently. The ROC stores an enable switch, host, and port for each
+application, creates direct launch links, and reads their health APIs when
+enabled. Their source code is intentionally not duplicated here.
+
+## Safety and privacy
+
+The operator is responsible for licensing, station identification, frequency
+coordination, RF exposure, radio configuration, and compliance with local
+regulations. A Winlink authorization does not assign a frequency.
+
+The dashboard does not provide a general command shell or an RF test-transmit
+button. Credentials, APRS-IS passcodes, CMS passwords, exact private location,
+and administrator secrets must never be committed. Example files contain
+placeholders and should be copied to the protected runtime locations described
+in the guide.
+
+## Development validation
+
+Development follows [DEVELOPMENT_DEPLOYMENT_PLAYBOOK.md](DEVELOPMENT_DEPLOYMENT_PLAYBOOK.md).
+Before committing or packaging, run:
+
+```bash
+make test
+./deploy/deploy.sh --check-only
+```
+
+The repository hygiene check rejects tracked private configuration, private-key
+material, token-like GitHub credentials, CRLF source files, and whitespace
+errors.

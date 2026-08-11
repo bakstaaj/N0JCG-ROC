@@ -1,0 +1,21 @@
+[Unit]
+Description=N0JCG ROC allowlisted operator-control helper
+After=n0jcg-aprs-rx.service n0jcg-weather.service n0jcg-winlink-modem.service n0jcg-winlink-rms.service
+
+[Service]
+Type=simple
+User=root
+Group=n0jcg
+RuntimeDirectory=n0jcg-operator-helper
+RuntimeDirectoryMode=0750
+ExecStart=/usr/bin/python3 /usr/local/libexec/n0jcg/operator_helper.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/lib/n0jcg-roc /run/n0jcg-operator-helper
+
+[Install]
+WantedBy=multi-user.target

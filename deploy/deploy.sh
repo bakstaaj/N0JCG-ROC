@@ -3,9 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ROC_HOST="${ROC_HOST:-192.168.68.145}"
+ROC_HOST="${ROC_HOST:-192.168.68.114}"
 ROC_USER="${ROC_USER:-n0jcg}"
-ROC_PORT="${ROC_PORT:-8095}"
+ROC_PORT="${ROC_PORT:-80}"
 ROC_REMOTE_DIR="${ROC_REMOTE_DIR:-/home/n0jcg/sdrdev/N0JCG-ROC}"
 ROC_IDENTITY_FILE="${ROC_IDENTITY_FILE:-${HOME}/.ssh/n0jcg_roc_ed25519}"
 MODE=deploy
@@ -26,7 +26,7 @@ fi
   exit 1
 }
 
-for required in README.md web/index.html web/styles.css web/app.js deploy/n0jcg-roc.service deploy/n0jcg-aprs-rx.service tools/validate.sh; do
+for required in README.md web/index.html web/styles.css web/app.js deploy/n0jcg-roc.service deploy/n0jcg-aprs-rx.service deploy/n0jcg-weather.service deploy/n0jcg-operator-helper.service deploy/operator_helper.py src/n0jcg_roc/operator_activity.py deploy/configure_operator_controls.sh tools/validate.sh; do
   [[ -f "${PROJECT_DIR}/${required}" ]] || { echo "FINAL: FAIL - missing ${required}"; exit 1; }
 done
 [[ -f "${ROC_IDENTITY_FILE}" ]] || { echo 'FINAL: FAIL - run deploy/setup_server_auth.sh first'; exit 1; }
@@ -62,11 +62,14 @@ rsync -az --delete \
   "${stage_dir}/" "${ROC_USER}@${ROC_HOST}:${ROC_REMOTE_DIR}/"
 
 "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "cd ${ROC_REMOTE_DIR} && if [ ! -f config/station.toml ]; then cp config/station.example.toml config/station.toml; fi && chmod +x tools/*.sh deploy/*.sh && ./tools/validate.sh"
-printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' systemctl restart n0jcg-roc.service"
+printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -d -m 0755 /usr/local/libexec/n0jcg && install -m 0644 ${ROC_REMOTE_DIR}/src/n0jcg_roc/operator_activity.py /usr/local/libexec/n0jcg/operator_activity.py && install -m 0755 ${ROC_REMOTE_DIR}/deploy/operator_helper.py /usr/local/libexec/n0jcg/operator_helper.py && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-operator-helper.service /etc/systemd/system/n0jcg-operator-helper.service && systemctl daemon-reload && systemctl enable n0jcg-operator-helper.service && systemctl restart n0jcg-operator-helper.service'"
+printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-roc.service /etc/systemd/system/n0jcg-roc.service && systemctl daemon-reload && systemctl enable n0jcg-roc.service && systemctl restart n0jcg-roc.service'"
 printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-aprs-rx.service /etc/systemd/system/n0jcg-aprs-rx.service && systemctl daemon-reload && systemctl enable n0jcg-aprs-rx.service && systemctl restart n0jcg-aprs-rx.service'"
-"${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "systemctl is-enabled --quiet n0jcg-roc.service && systemctl is-active --quiet n0jcg-roc.service && curl -fsS http://127.0.0.1:${ROC_PORT}/api/health"
+printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-weather.service /etc/systemd/system/n0jcg-weather.service && systemctl daemon-reload && systemctl enable n0jcg-weather.service && systemctl restart n0jcg-weather.service'"
+"${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "systemctl is-enabled --quiet n0jcg-roc.service && systemctl is-active --quiet n0jcg-roc.service && systemctl is-active --quiet n0jcg-operator-helper.service && curl -fsS http://127.0.0.1:${ROC_PORT}/api/health"
 
-curl -fsS "http://${ROC_HOST}:${ROC_PORT}/" | grep -Fq 'Radio Operations Center'
-curl -fsS "http://${ROC_HOST}:${ROC_PORT}/app.js" | grep -Fq '/api/health'
-curl -fsS "http://${ROC_HOST}:${ROC_PORT}/api/health" | grep -Fq '"ready": false'
+curl -fsS "http://${ROC_HOST}:${ROC_PORT}/" | grep -F 'Radio Operations Center' >/dev/null
+curl -fsS "http://${ROC_HOST}:${ROC_PORT}/app.js" | grep -F '/api/health' >/dev/null
+curl -fsS "http://${ROC_HOST}:${ROC_PORT}/api/health" | grep -F '"transmit"' >/dev/null
+curl -fsS "http://${ROC_HOST}:${ROC_PORT}/api/operator/status" | grep -F '"controls"' >/dev/null
 echo 'FINAL: PASS'

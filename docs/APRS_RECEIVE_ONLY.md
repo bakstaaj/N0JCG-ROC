@@ -12,7 +12,7 @@ rtl_fm -d 0 -f 144390000 -M fm -s 240000 -r 48000 -g 0 - \
   | direwolf -r 48000 -c config/direwolf.aprs-rx.example.conf -
 ```
 
-The RTL EEPROM serial (`00000144`) must be resolved before replacing `-d 0`
+The RTL EEPROM serial (`00014439`) must be resolved before replacing `-d 0`
 with a persistent device-selection rule. Linux device indexes are observations,
 not identities. The pipeline feeds Dire Wolf through stdin and exposes only the
 configured local AGW/KISS listener ports (`18000`/`18001`); it does not use the
