@@ -10,7 +10,10 @@ User=n0jcg
 Group=n0jcg
 SupplementaryGroups=audio dialout
 ExecStart=/usr/bin/direwolf -t 0 -c /etc/n0jcg/winlink-direwolf.conf
-Restart=on-failure
+# ALSA can terminate Dire Wolf with a clean SIGHUP when the DigiRig USB
+# interfaces re-enumerate.  An explicit systemctl stop still suppresses the
+# restart, while this policy restores the modem after a transient USB reset.
+Restart=always
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true

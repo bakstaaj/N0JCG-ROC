@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 - 2026-08-11
+
+Patch release for the commissioned Winlink RMS gateway.
+
+### Reliability
+
+- Restarts the Dire Wolf Winlink modem after a clean SIGHUP caused by a
+  transient DigiRig USB re-enumeration.
+- Preserves explicit operator stops while preventing the RMS gateway from
+  remaining in a service-fault state after the hardware returns.
+
 ## 0.1.0 - 2026-08-10
 
 First packaged N0JCG Gateway release.

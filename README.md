@@ -5,7 +5,7 @@ station monitoring. Its browser dashboard brings APRS, Winlink RMS Packet,
 local weather, system health, and links to independently deployed N0JCG
 applications into one operator view.
 
-Version **0.1.0** is the first packaged release. It includes:
+Version **0.1.1** is the current packaged release. It includes:
 
 - an RTL-SDR APRS receiver and receive-only APRS-IS iGate path;
 - APRS frame history, station symbols, and an optional aprs.fi activity map;
@@ -20,7 +20,7 @@ Version **0.1.0** is the first packaged release. It includes:
 
 ## Documentation
 
-- [End User Guide](docs/N0JCG_Gateway_End_User_Guide_v0.1.0.md)
+- [End User Guide](docs/N0JCG_Gateway_End_User_Guide_v0.1.1.md)
 - [Winlink RMS commissioning](docs/WINLINK_RMS_COMMISSIONING.md)
 - [Protected operator controls](docs/OPERATOR_CONTROLS.md)
 - [APRS receive-only setup](docs/APRS_RECEIVE_ONLY.md)
