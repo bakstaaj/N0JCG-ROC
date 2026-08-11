@@ -7,7 +7,7 @@
     <title>N0JCG Gateway | Radio Operations Center</title>
     <link rel="icon" href="/assets/N0JCG_Icon_Approved.png" type="image/png">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynHTlfQpZQ7Gok04p2rQjMZgq7dQ=" crossorigin="">
-    <link rel="stylesheet" href="/styles.css?v=20260811-overview-telemetry">
+    <link rel="stylesheet" href="/styles.css?v=20260811-rms-summary">
   </head>
   <body>
     <div class="app-shell">
@@ -69,6 +69,11 @@
         </section>
 
         <section class="summary-grid" aria-label="Live operating summary">
+          <article class="status-card">
+            <div class="card-heading"><span>Winlink RMS gateway</span><span class="live-label">RF</span></div>
+            <strong id="metric-rms">—</strong>
+            <small id="metric-rms-detail">Checking gateway services</small>
+          </article>
           <article class="status-card">
             <div class="card-heading"><span>APRS listener</span><span class="live-label">Live</span></div>
             <strong id="metric-aprs">—</strong>
@@ -390,6 +395,6 @@
     </section>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="/app.js?v=20260811-overview-telemetry"></script>
+    <script src="/app.js?v=20260811-rms-summary"></script>
   </body>
 </html>

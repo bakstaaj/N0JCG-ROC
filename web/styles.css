@@ -87,7 +87,7 @@ button, select { font: inherit; }
 .interlock.interlock--operational { background: #ecfdf5; border-color: #7fc7a4; color: #11663c; }
 .interlock.interlock--operational small { color: #2f6f51; }
 
-.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-top: 20px; }
 .status-card, .telemetry-card, .metric-card, .weather-card, .service-card, .application-card, .latest-frame-panel { background: var(--n0-color-white); border: 1px solid var(--n0-color-border); border-radius: var(--n0-radius-md); box-shadow: var(--n0-shadow-sm); }
 .status-card { min-height: 132px; padding: 18px; border-top: 3px solid var(--n0-color-blue); }
 .card-heading { min-height: 24px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--n0-color-text-muted); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }

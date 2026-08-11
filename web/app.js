@@ -324,7 +324,26 @@ function formatServiceUptime(startedUtc) {
   return formatUptime(Math.max(0, Math.floor((Date.now() - started.getTime()) / 1000)));
 }
 
+function rmsGatewayOnAir(winlink) {
+  const commissioning = Object.values(winlink?.commissioning || {});
+  return winlink?.state === "operational"
+    && Boolean(winlink.services?.linbpq?.active)
+    && Boolean(winlink.services?.dire_wolf?.active)
+    && Boolean(winlink.hardware?.ptt_serial_present)
+    && commissioning.length > 0
+    && commissioning.every(Boolean);
+}
+
+function showRmsSummary(gateway) {
+  const winlink = gateway?.winlink || {};
+  const identity = winlink.identity || {};
+  const onAir = rmsGatewayOnAir(winlink);
+  document.querySelector("#metric-rms").textContent = onAir ? "On air" : (winlink.state === "operational" ? "Standby" : "Service fault");
+  document.querySelector("#metric-rms-detail").textContent = `${identity.rms_call || "RMS not configured"} · ${formatFrequency(identity.frequency_hz)} · ${identity.mode || "Mode unavailable"}`;
+}
+
 function showWinlink(gateway) {
+  showRmsSummary(gateway);
   const winlink = gateway.winlink || {};
   const identity = winlink.identity || {};
   const services = winlink.services || {};
@@ -1224,13 +1243,7 @@ async function loadOperationalData() {
 
     const winlink = gateway.winlink || {};
     const identity = winlink.identity || {};
-    const commissioning = Object.values(winlink.commissioning || {});
-    const rmsOnAir = winlink.state === "operational"
-      && Boolean(winlink.services?.linbpq?.active)
-      && Boolean(winlink.services?.dire_wolf?.active)
-      && Boolean(winlink.hardware?.ptt_serial_present)
-      && commissioning.length > 0
-      && commissioning.every(Boolean);
+    const rmsOnAir = rmsGatewayOnAir(winlink);
     interlock.classList.toggle("interlock--operational", rmsOnAir);
     interlock.querySelector(".interlock-icon").textContent = rmsOnAir ? "RMS" : "TX";
     if (rmsOnAir) {
