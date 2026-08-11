@@ -61,11 +61,19 @@ button, select { font: inherit; }
 .app-rail nav a { min-height: 44px; display: flex; align-items: center; gap: 11px; padding: 8px 12px; border-radius: 6px; color: var(--n0-color-text); font-weight: 600; text-decoration: none; }
 .app-rail nav a > span { width: 20px; color: var(--n0-color-blue); font-family: var(--n0-font-mono); text-align: center; }
 .app-rail nav a:hover, .app-rail nav a[aria-current="page"] { background: #e9f5fb; color: var(--n0-color-blue); }
+.app-rail nav a[aria-current="page"] { box-shadow: inset 3px 0 0 var(--n0-color-cyan); }
 .rail-footer { margin-top: auto; padding: 18px 12px 4px; border-top: 1px solid var(--n0-color-border); color: var(--n0-color-text-muted); font-size: .72rem; }
 .rail-footer span, .rail-footer strong { display: block; }
 .rail-footer strong { margin-top: 4px; color: var(--n0-color-navy); font-family: var(--n0-font-mono); font-weight: 600; }
 
 .app-main { grid-column: 2; grid-row: 2; min-width: 0; width: min(100%, 1440px); padding: 32px clamp(20px, 4vw, 48px) 56px; }
+.workspace-panel { min-height: calc(100vh - 160px); animation: workspace-panel-enter 180ms ease-out; }
+.workspace-panel > .content-section:first-child { margin-top: 0; }
+.workspace-panel > .content-section + .content-section { margin-top: 32px; }
+@keyframes workspace-panel-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .page-intro { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 24px; background: var(--n0-color-white); border: 1px solid var(--n0-color-border); border-top: 4px solid var(--n0-color-blue); border-radius: var(--n0-radius-md); box-shadow: var(--n0-shadow-sm); }
 .page-intro h1 { margin: 2px 0 5px; color: var(--n0-color-navy); font: 700 clamp(1.55rem, 3vw, 2.25rem)/1.15 var(--n0-font-display); letter-spacing: -.025em; }
 .page-intro p:last-child { max-width: 720px; margin: 0; color: var(--n0-color-text-muted); }
@@ -329,10 +337,11 @@ button, select { font: inherit; }
   .brand-lockup img { width: 294px; height: 56px; }
   .app-rail { position: sticky; top: 64px; z-index: 19; width: 100%; height: auto; min-height: 0; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--n0-color-border); }
   .rail-product, .rail-footer { display: none; }
-  .app-rail nav { grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
-  .app-rail nav a { min-height: 44px; font-size: 0; }
+  .app-rail nav { display: flex; gap: 3px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+  .app-rail nav a { flex: 0 0 54px; min-height: 44px; font-size: 0; }
   .app-rail nav a > span { font-size: 1rem; }
   .app-main { width: 100%; padding: 20px 14px 40px; }
+  .workspace-panel { min-height: calc(100vh - 148px); }
   .page-intro { display: grid; padding: 18px; }
   .interlock { width: 100%; max-width: none; flex-basis: auto; }
   .summary-grid, .service-grid, .weather-grid, .metric-grid, .application-grid, .settings-grid, .winlink-grid { grid-template-columns: 1fr; }

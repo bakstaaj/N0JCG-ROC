@@ -549,6 +549,12 @@ class ServerTests(unittest.TestCase):
         ]
         section_positions = [body.index(section) for section in expected_sections]
         self.assertEqual(section_positions, sorted(section_positions))
+        self.assertEqual(body.count(b'data-workspace-panel='), 10)
+        self.assertIn(b'id="workspace-overview" class="workspace-panel"', body)
+        self.assertIn(b'id="workspace-aprs" class="workspace-panel"', body)
+        self.assertIn(b'data-workspace-panel="configuration"', body)
+        self.assertNotIn(b'data-workspace-panel="overview" aria-labelledby="nav-overview" tabindex="-1" hidden', body)
+        self.assertEqual(body.count(b'class="workspace-panel" data-workspace-panel='), 10)
         self.assertIn(b"Position data from", body)
         self.assertIn(b"OpenStreetMap contributors", body)
         self.assertIn(b"APRS listener", body)
@@ -569,6 +575,9 @@ class ServerTests(unittest.TestCase):
         self.assertIn(b"aprs-map-zoom-out", app)
         self.assertIn(b"aprs-map-roc-area", app)
         self.assertIn(b"aprsSymbolIcon", app)
+        self.assertIn(b"initWorkspaceNavigation", app)
+        self.assertIn(b"showWorkspacePanel", app)
+        self.assertIn(b"aprsMap.invalidateSize()", app)
         self.assertIn(b"showWinlink", app)
         self.assertIn(b'/api/gateway', app)
         self.assertIn(b'/api/winlink/sessions', app)

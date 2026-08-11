@@ -1128,11 +1128,71 @@ async function start() {
   }
 }
 
-document.querySelectorAll(".app-rail nav a").forEach((link) => {
-  link.addEventListener("click", () => {
-    document.querySelectorAll(".app-rail nav a").forEach((item) => item.removeAttribute("aria-current"));
-    link.setAttribute("aria-current", "page");
-  });
-});
+const workspacePanels = [...document.querySelectorAll("[data-workspace-panel]")];
+const workspaceLinks = [...document.querySelectorAll(".app-rail nav [data-workspace-target]")];
 
+function workspacePanelForHash(hash) {
+  const requestedHash = hash && hash !== "#" ? hash : "#overview";
+  let target;
+  try {
+    target = document.querySelector(requestedHash);
+  } catch (_error) {
+    target = null;
+  }
+  return target?.closest("[data-workspace-panel]")
+    || document.querySelector('[data-workspace-panel="overview"]');
+}
+
+function showWorkspacePanel(hash, {updateHistory = false, scroll = true} = {}) {
+  const panel = workspacePanelForHash(hash);
+  if (!panel) return;
+  const panelName = panel.dataset.workspacePanel;
+
+  workspacePanels.forEach((item) => {
+    item.hidden = item !== panel;
+  });
+  workspaceLinks.forEach((link) => {
+    if (link.dataset.workspaceTarget === panelName) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+
+  const selectedLink = workspaceLinks.find((link) => link.dataset.workspaceTarget === panelName);
+  let selectedHash = selectedLink?.hash || "#overview";
+  try {
+    const requestedTarget = hash && hash !== "#" ? document.querySelector(hash) : null;
+    if (requestedTarget?.closest("[data-workspace-panel]") === panel) {
+      selectedHash = hash;
+    }
+  } catch (_error) {
+    // Malformed or stale hashes fall back to the panel's primary navigation link.
+  }
+  if (updateHistory && window.location.hash !== selectedHash) {
+    window.history.pushState({workspacePanel: panelName}, "", selectedHash);
+  } else if (!window.location.hash) {
+    window.history.replaceState({workspacePanel: panelName}, "", selectedHash);
+  }
+
+  if (scroll) window.scrollTo({top: 0, behavior: "smooth"});
+  else if (selectedHash !== selectedLink?.hash) {
+    window.requestAnimationFrame(() => document.querySelector(selectedHash)?.scrollIntoView({block: "start"}));
+  }
+  if (panelName === "aprs" && aprsMap) {
+    window.requestAnimationFrame(() => aprsMap.invalidateSize());
+    window.setTimeout(() => aprsMap.invalidateSize(), 220);
+  }
+}
+
+function initWorkspaceNavigation() {
+  workspaceLinks.forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      showWorkspacePanel(link.hash, {updateHistory: true});
+    });
+  });
+  window.addEventListener("popstate", () => showWorkspacePanel(window.location.hash, {scroll: false}));
+  window.addEventListener("hashchange", () => showWorkspacePanel(window.location.hash, {scroll: false}));
+  showWorkspacePanel(window.location.hash || "#overview", {scroll: false});
+}
+
+initWorkspaceNavigation();
 start();

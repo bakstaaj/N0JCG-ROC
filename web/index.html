@@ -7,7 +7,7 @@
     <title>N0JCG Gateway | Radio Operations Center</title>
     <link rel="icon" href="/assets/N0JCG_Icon_Approved.png" type="image/png">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynHTlfQpZQ7Gok04p2rQjMZgq7dQ=" crossorigin="">
-    <link rel="stylesheet" href="/styles.css?v=20260810-registration">
+    <link rel="stylesheet" href="/styles.css?v=20260811-panel-workspace">
   </head>
   <body>
     <div class="app-shell">
@@ -34,16 +34,16 @@
           <div><strong>Gateway</strong><span>Operations</span></div>
         </div>
         <nav>
-          <a href="#overview" aria-current="page"><span aria-hidden="true">⌂</span>Overview</a>
-          <a href="#aprs-activity"><span aria-hidden="true">⌖</span>APRS</a>
-          <a href="#winlink-gateway"><span aria-hidden="true">WL</span>Winlink</a>
-          <a href="#radio-services"><span aria-hidden="true">⌁</span>Radio services</a>
-          <a href="#weather-monitor"><span aria-hidden="true">☼</span>Weather</a>
-          <a href="#system-readiness"><span aria-hidden="true">▦</span>System</a>
-          <a href="#applications"><span aria-hidden="true">↗</span>Applications</a>
-          <a href="#registration"><span aria-hidden="true">ID</span>Registration</a>
-          <a href="#operator-controls"><span aria-hidden="true">OP</span>Operator</a>
-          <a href="#application-settings"><span aria-hidden="true">⚙</span>Configuration</a>
+          <a id="nav-overview" href="#overview" data-workspace-target="overview" aria-controls="workspace-overview" aria-current="page"><span aria-hidden="true">⌂</span>Overview</a>
+          <a id="nav-aprs" href="#aprs-activity" data-workspace-target="aprs" aria-controls="workspace-aprs"><span aria-hidden="true">⌖</span>APRS</a>
+          <a id="nav-winlink" href="#winlink-gateway" data-workspace-target="winlink" aria-controls="workspace-winlink"><span aria-hidden="true">WL</span>Winlink</a>
+          <a id="nav-radio" href="#radio-services" data-workspace-target="radio" aria-controls="workspace-radio"><span aria-hidden="true">⌁</span>Radio services</a>
+          <a id="nav-weather" href="#weather-monitor" data-workspace-target="weather" aria-controls="workspace-weather"><span aria-hidden="true">☼</span>Weather</a>
+          <a id="nav-system" href="#system-readiness" data-workspace-target="system" aria-controls="workspace-system"><span aria-hidden="true">▦</span>System</a>
+          <a id="nav-applications" href="#applications" data-workspace-target="applications" aria-controls="workspace-applications"><span aria-hidden="true">↗</span>Applications</a>
+          <a id="nav-registration" href="#registration" data-workspace-target="registration" aria-controls="workspace-registration"><span aria-hidden="true">ID</span>Registration</a>
+          <a id="nav-operator" href="#operator-controls" data-workspace-target="operator" aria-controls="workspace-operator"><span aria-hidden="true">OP</span>Operator</a>
+          <a id="nav-configuration" href="#application-settings" data-workspace-target="configuration" aria-controls="workspace-configuration"><span aria-hidden="true">⚙</span>Configuration</a>
         </nav>
         <div class="rail-footer">
           <span>Open Radio Platform</span>
@@ -52,6 +52,7 @@
       </aside>
 
       <main class="app-main">
+        <div id="workspace-overview" class="workspace-panel" data-workspace-panel="overview" aria-labelledby="nav-overview" tabindex="-1">
         <section id="overview" class="page-intro">
           <div>
             <p class="eyebrow">Station overview</p>
@@ -91,7 +92,9 @@
             <small id="metric-weather-detail">Waiting for GW1100/WS90 data</small>
           </article>
         </section>
+        </div>
 
+        <div id="workspace-aprs" class="workspace-panel" data-workspace-panel="aprs" aria-labelledby="nav-aprs" tabindex="-1" hidden>
         <section id="aprs-activity" class="content-section latest-frame-panel" aria-labelledby="latest-frame-heading">
           <div class="section-heading compact-heading">
             <div><p class="eyebrow">APRS activity</p><h2 id="latest-frame-heading">Latest APRS frame</h2></div>
@@ -114,7 +117,9 @@
           </div>
           <div class="aprs-map-footer"><span id="aprs-map-summary">Waiting for position data</span><span>Position data from <a href="https://aprs.fi/" target="_blank" rel="noopener">aprs.fi</a> · Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></span></div>
         </section>
+        </div>
 
+        <div id="workspace-winlink" class="workspace-panel" data-workspace-panel="winlink" aria-labelledby="nav-winlink" tabindex="-1" hidden>
         <section id="winlink-gateway" class="content-section" aria-labelledby="winlink-heading">
           <div class="section-heading">
             <div><p class="eyebrow">Packet gateway operations</p><h2 id="winlink-heading">Winlink Gateway</h2></div>
@@ -193,7 +198,9 @@
             <p class="privacy-note">Operational events only. Message content and credentials are excluded.</p>
           </div>
         </section>
+        </div>
 
+        <div id="workspace-radio" class="workspace-panel" data-workspace-panel="radio" aria-labelledby="nav-radio" tabindex="-1" hidden>
         <section id="radio-services" class="content-section">
           <div class="section-heading">
             <div><p class="eyebrow">Device ownership</p><h2>Radio services</h2></div>
@@ -201,7 +208,9 @@
           </div>
           <div class="service-grid" id="service-grid" aria-live="polite"></div>
         </section>
+        </div>
 
+        <div id="workspace-weather" class="workspace-panel" data-workspace-panel="weather" aria-labelledby="nav-weather" tabindex="-1" hidden>
         <section id="weather-monitor" class="content-section">
           <div class="section-heading">
             <div><p class="eyebrow">GW1100 / WS90</p><h2>Weather monitor</h2></div>
@@ -218,7 +227,9 @@
             <article class="weather-card"><span>Gateway</span><strong id="weather-gateway">Checking</strong><small id="weather-gateway-detail">192.168.68.131</small></article>
           </div>
         </section>
+        </div>
 
+        <div id="workspace-system" class="workspace-panel" data-workspace-panel="system" aria-labelledby="nav-system" tabindex="-1" hidden>
         <section id="system-readiness" class="content-section">
           <div class="section-heading">
             <div><p class="eyebrow">ROC server</p><h2>System readiness</h2></div>
@@ -237,7 +248,9 @@
             <article class="metric-card"><span>UHF locks</span><strong id="metric-uhf-locks">—</strong><small id="metric-uhf-locks-detail">UHF analog scanner</small></article>
           </div>
         </section>
+        </div>
 
+        <div id="workspace-applications" class="workspace-panel" data-workspace-panel="applications" aria-labelledby="nav-applications" tabindex="-1" hidden>
         <section id="applications" class="content-section">
           <div class="section-heading">
             <div><p class="eyebrow">Platform applications</p><h2>Operational centers</h2></div>
@@ -254,7 +267,9 @@
             </article>
           </div>
         </section>
+        </div>
 
+        <div id="workspace-registration" class="workspace-panel" data-workspace-panel="registration" aria-labelledby="nav-registration" tabindex="-1" hidden>
         <section id="registration" class="content-section">
           <div class="section-heading">
             <div><p class="eyebrow">Product registration</p><h2>N0JCG Gateway license</h2></div>
@@ -273,7 +288,9 @@
             <output id="registration-result" class="registration-result" aria-live="polite"></output>
           </div>
         </section>
+        </div>
 
+        <div id="workspace-operator" class="workspace-panel" data-workspace-panel="operator" aria-labelledby="nav-operator" tabindex="-1" hidden>
         <section id="operator-controls" class="content-section">
           <div class="section-heading">
             <div><p class="eyebrow">ROC administration</p><h2>Protected operator controls</h2></div>
@@ -301,7 +318,9 @@
             <output id="operator-result" class="operator-result" aria-live="polite"></output>
           </div>
         </section>
+        </div>
 
+        <div id="workspace-configuration" class="workspace-panel" data-workspace-panel="configuration" aria-labelledby="nav-configuration" tabindex="-1" hidden>
         <section id="application-settings" class="content-section">
           <div class="section-heading">
             <div><p class="eyebrow">ROC configuration</p><h2>Application connections</h2></div>
@@ -330,6 +349,7 @@
             </form>
           </div>
         </section>
+        </div>
       </main>
     </div>
 
@@ -364,6 +384,6 @@
     </section>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script src="/app.js?v=20260810-registration"></script>
+    <script src="/app.js?v=20260811-panel-workspace"></script>
   </body>
 </html>
