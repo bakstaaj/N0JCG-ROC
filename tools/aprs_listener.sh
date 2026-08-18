@@ -14,7 +14,7 @@ igate_login="${APRS_IGATE_LOGIN:-}"
 igate_passcode="${APRS_IGATE_PASSCODE:-}"
 igate_beacon_enabled="${APRS_IGATE_BEACON_ENABLED:-1}"
 igate_beacon_interval="${APRS_IGATE_BEACON_INTERVAL:-720:00}"
-igate_beacon_comment="${APRS_IGATE_BEACON_COMMENT:-N0JCG ROC RX-only iGate 144.390 MHz}"
+igate_beacon_comment="${APRS_IGATE_BEACON_COMMENT:-N0JCG ROC RX-only iGate 144.390 MHz https://n0jcg.com}"
 # Use the nominal APRS channel and enable the RTL FM demodulator's DC blocker.
 # Offset tuning is not supported reliably by this tuner and only adds a warning.
 # This rtl_fm build reports an internal +252 kHz tuning offset in this 48 kHz
