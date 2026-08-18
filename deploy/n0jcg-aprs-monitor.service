@@ -1,0 +1,20 @@
+[Unit]
+Description=N0JCG APRS pipeline health monitor
+After=n0jcg-aprs-rx.service
+Wants=n0jcg-aprs-rx.service
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
+Environment=APRS_RTL_SERIAL=00014439
+Environment=APRS_PIPELINE_STALE_SECONDS=180
+ExecStart=/usr/bin/python3 /home/n0jcg/sdrdev/N0JCG-ROC/tools/aprs_pipeline_monitor.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

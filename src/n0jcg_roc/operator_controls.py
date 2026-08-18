@@ -14,7 +14,10 @@ import time
 
 SESSION_SECONDS = 30 * 60
 PASSWORD_ITERATIONS = 600_000
-ALLOWED_ACTIONS = {"restart", "maintenance_on", "maintenance_off", "cms_test"}
+ALLOWED_ACTIONS = {
+    "restart", "maintenance_on", "maintenance_off", "cms_test",
+    "wifi_scan", "wifi_connect", "ethernet_status", "ethernet_set", "ethernet_confirm",
+}
 TRIAL_SERVICE_ACTIONS = {"trial_services_start", "trial_services_stop"}
 _AUDIT_LOCK = threading.Lock()
 
@@ -137,10 +140,15 @@ def recent_audit(path: Path, limit: int = 25) -> list[dict]:
     return records
 
 
-def _request_helper(action: str, socket_path: Path, timeout: float) -> dict:
+def _request_helper(action: str, socket_path: Path, timeout: float, parameters: dict | None = None) -> dict:
     if action not in ALLOWED_ACTIONS | TRIAL_SERVICE_ACTIONS:
         raise ValueError("operator action is not allowed")
-    encoded = (json.dumps({"action": action}) + "\n").encode("utf-8")
+    request = {"action": action}
+    if parameters:
+        request["parameters"] = parameters
+    encoded = (json.dumps(request) + "\n").encode("utf-8")
+    if len(encoded) > 4096:
+        raise ValueError("operator helper request is too large")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         connection.settimeout(timeout)
         connection.connect(str(socket_path))
@@ -159,10 +167,15 @@ def _request_helper(action: str, socket_path: Path, timeout: float) -> dict:
     return payload
 
 
-def request_helper(action: str, socket_path: Path, timeout: float = 35.0) -> dict:
+def request_helper(
+    action: str,
+    socket_path: Path,
+    timeout: float = 35.0,
+    parameters: dict | None = None,
+) -> dict:
     if action not in ALLOWED_ACTIONS:
         raise ValueError("operator action is not allowed")
-    return _request_helper(action, socket_path, timeout)
+    return _request_helper(action, socket_path, timeout, parameters)
 
 
 def set_trial_services_enabled(enabled: bool, socket_path: Path, timeout: float = 35.0) -> dict:

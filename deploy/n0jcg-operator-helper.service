@@ -15,7 +15,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=read-only
 ProtectSystem=strict
-ReadWritePaths=/var/lib/n0jcg-roc /run/n0jcg-operator-helper
+ReadWritePaths=/var/lib/n0jcg-roc /var/backups /etc/netplan /run/n0jcg-operator-helper /run/netplan /run/systemd/network /run/systemd/system /run/udev/rules.d
 
 [Install]
 WantedBy=multi-user.target

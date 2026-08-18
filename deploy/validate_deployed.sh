@@ -51,6 +51,6 @@ echo "PASS live APIs report ready tooling, ${ROC_EXPECT_HARDWARE_STATE:-observed
 
 ssh -i "${ROC_IDENTITY_FILE}" -o BatchMode=yes -o ConnectTimeout=8 \
   "${ROC_USER}@${ROC_HOST}" \
-  'systemctl is-enabled --quiet n0jcg-roc.service n0jcg-weather.service && systemctl is-active --quiet n0jcg-roc.service n0jcg-weather.service && test -z "$(systemctl --failed --no-legend --plain)"'
-echo 'PASS ROC and weather systemd services enabled/active with zero failed units'
+  'systemctl is-enabled --quiet n0jcg-roc.service n0jcg-weather.service n0jcg-admin-report.service && systemctl is-active --quiet n0jcg-roc.service n0jcg-weather.service n0jcg-admin-report.service && test -z "$(systemctl --failed --no-legend --plain)"'
+echo 'PASS ROC, weather, and administrator report systemd services enabled/active with zero failed units'
 echo 'FINAL: PASS'

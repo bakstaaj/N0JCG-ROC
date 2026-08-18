@@ -99,7 +99,7 @@
         <section id="overview-telemetry" class="content-section overview-section" aria-labelledby="overview-telemetry-heading">
           <div class="section-heading">
             <div><p class="eyebrow">Rolling telemetry</p><h2 id="overview-telemetry-heading">Performance trends</h2></div>
-            <p>Last 60 minutes · 30-second samples</p>
+            <div class="telemetry-actions"><p id="telemetry-history-summary">Persistent history · loading</p><button id="telemetry-reset" class="n0-button n0-button--secondary" type="button" disabled>Reset trends</button><output id="telemetry-reset-result" aria-live="polite"></output></div>
           </div>
           <div class="telemetry-grid" aria-live="polite">
             <article class="telemetry-card" data-telemetry-card="cpu"><div class="telemetry-heading"><span>CPU utilization</span><strong id="metric-cpu">—</strong></div><div id="chart-cpu" class="telemetry-chart" role="img" aria-label="CPU utilization history"></div><small id="metric-cpu-detail">Waiting for samples</small></article>
@@ -108,6 +108,8 @@
             <article class="telemetry-card" data-telemetry-card="aprsFrames"><div class="telemetry-heading"><span>Decoded APRS frames</span><strong id="metric-aprs-packets">—</strong></div><div id="chart-aprsFrames" class="telemetry-chart" role="img" aria-label="Decoded APRS frame history"></div><small id="metric-aprs-packets-detail">Waiting for samples</small></article>
             <article class="telemetry-card" data-telemetry-card="aircraft"><div class="telemetry-heading"><span>Aircraft tracked</span><strong id="metric-aircraft">—</strong></div><div id="chart-aircraft" class="telemetry-chart" role="img" aria-label="Aircraft tracked history"></div><small id="metric-aircraft-detail">Waiting for Air Traffic Center</small></article>
             <article class="telemetry-card" data-telemetry-card="voiceCalls"><div class="telemetry-heading"><span>Scanner voice calls</span><strong id="metric-voice-calls">—</strong></div><div id="chart-voiceCalls" class="telemetry-chart" role="img" aria-label="Scanner voice call history"></div><small id="metric-voice-calls-detail">Waiting for Scanner</small></article>
+            <article class="telemetry-card" data-telemetry-card="vhfLocks"><div class="telemetry-heading"><span>VHF locks</span><strong id="metric-vhf-locks">—</strong></div><div id="chart-vhfLocks" class="telemetry-chart" role="img" aria-label="VHF scanner lock history"></div><small id="metric-vhf-locks-detail">Waiting for Scanner</small></article>
+            <article class="telemetry-card" data-telemetry-card="uhfLocks"><div class="telemetry-heading"><span>UHF locks</span><strong id="metric-uhf-locks">—</strong></div><div id="chart-uhfLocks" class="telemetry-chart" role="img" aria-label="UHF scanner lock history"></div><small id="metric-uhf-locks-detail">Waiting for Scanner</small></article>
           </div>
         </section>
 
@@ -128,10 +130,8 @@
             <article class="status-card"><div class="card-heading"><span>Host</span></div><strong id="metric-host">—</strong><small id="metric-platform">—</small></article>
             <article class="status-card"><div class="card-heading"><span>Uptime</span></div><strong id="metric-uptime">—</strong><small id="metric-load">—</small></article>
             <article class="status-card"><div class="card-heading"><span>Disk free</span></div><strong id="metric-disk">—</strong><small id="metric-disk-total">—</small></article>
-            <article class="status-card"><div class="card-heading"><span>Radio tools</span></div><strong id="metric-tools">—</strong><small id="metric-tools-detail">—</small></article>
+            <article class="status-card"><div class="card-heading"><span>Radio software prerequisites</span></div><strong id="metric-tools">—</strong><small id="metric-tools-detail">—</small></article>
             <article class="status-card"><div class="card-heading"><span>Attached RF paths</span></div><strong id="metric-hardware">—</strong><small id="metric-hardware-detail">—</small></article>
-            <article class="status-card"><div class="card-heading"><span>VHF locks</span></div><strong id="metric-vhf-locks">—</strong><small id="metric-vhf-locks-detail">VHF analog scanner</small></article>
-            <article class="status-card"><div class="card-heading"><span>UHF locks</span></div><strong id="metric-uhf-locks">—</strong><small id="metric-uhf-locks-detail">UHF analog scanner</small></article>
           </div>
         </section>
         </div>
@@ -146,7 +146,12 @@
             <strong id="metric-aprs-latest">—</strong>
             <small id="metric-aprs-latest-detail">Waiting for a decoded packet</small>
           </div>
-        </section>
+          <div class="aprs-digi-survey" aria-live="polite">
+            <div class="section-heading compact-heading"><div><p class="eyebrow">Passive RF survey</p><h3>Digipeaters observed</h3></div><span id="aprs-digi-survey-window" class="technical-label">72-hour window</span></div>
+            <p id="aprs-digi-survey-message" class="aprs-digi-survey-message">Waiting for locally decoded RF frames.</p>
+            <div id="aprs-digi-survey-list" class="aprs-digi-survey-list"></div>
+          </div>
+          </section>
 
         <section id="aprs-map-section" class="content-section">
           <div class="section-heading">
@@ -245,7 +250,7 @@
         <div id="workspace-weather" class="workspace-panel" data-workspace-panel="weather" aria-labelledby="nav-weather" tabindex="-1" hidden>
         <section id="weather-monitor" class="content-section">
           <div class="section-heading">
-            <div><p class="eyebrow">GW1100 / WS90</p><h2>Weather monitor</h2></div>
+            <div><p class="eyebrow">GW1100 / WS90 / WH57</p><h2>Weather monitor</h2></div>
             <p id="weather-updated">Waiting for gateway</p>
           </div>
           <div class="weather-grid" aria-live="polite">
@@ -255,6 +260,7 @@
             <article class="weather-card"><span>Barometric pressure</span><strong id="weather-pressure">—</strong><small id="weather-pressure-detail">Relative and absolute pressure</small></article>
             <article class="weather-card"><span>Rain</span><strong id="weather-rain">—</strong><small id="weather-rain-detail">Today</small></article>
             <article class="weather-card"><span>UV / solar</span><strong id="weather-uv">—</strong><small id="weather-solar">—</small></article>
+            <article class="weather-card"><span>Lightning today</span><strong id="weather-lightning">—</strong><small id="weather-lightning-detail">Waiting for WH57 sensor</small></article>
             <article class="weather-card"><span>Gateway indoor</span><strong id="weather-indoor">—</strong><small id="weather-indoor-detail">GW1100 sensor</small></article>
             <article class="weather-card"><span>Gateway</span><strong id="weather-gateway">Checking</strong><small id="weather-gateway-detail">192.168.68.131</small></article>
           </div>
@@ -310,11 +316,11 @@
           <div class="winlink-activity-panel operator-panel">
             <p class="operator-intro">Administrative actions are local, allowlisted, audited, and do not provide an RF transmit control.</p>
             <form id="operator-login-form" class="operator-login" hidden>
-              <label>Administrator password<input name="password" type="password" minlength="10" autocomplete="current-password" required></label>
-              <button class="n0-button n0-button--primary" type="submit">Administrator login</button>
+              <label>Operator password<input name="password" type="password" minlength="10" autocomplete="current-password" required></label>
+              <button class="n0-button n0-button--primary" type="submit">Operator login</button>
             </form>
             <div id="operator-setup-required" class="operator-setup" hidden>
-              <strong>Administrator setup required</strong>
+              <strong>Operator setup required</strong>
               <code>sudo deploy/configure_operator_controls.sh</code>
             </div>
             <div id="operator-actions" class="operator-actions" hidden>
@@ -343,6 +349,44 @@
               <div class="settings-fields settings-fields--key"><label>Station overview title<input name="overview_title" type="text" maxlength="120" autocomplete="off" required placeholder="N0JCG · Cripple Creek, Colorado"></label></div>
               <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save Station Overview</button><output aria-live="polite"></output></div>
             </form>
+            <form id="wifi-settings-form" class="settings-card settings-card--wide">
+              <div class="settings-card-header">
+                <div><h3>ROC Wi-Fi connection</h3><small>Scan visible networks and configure wlp2s0 through guarded Netplan rollback</small></div>
+                <span id="wifi-current-state" class="application-state">Operator login required</span>
+              </div>
+              <div class="settings-actions wifi-scan-actions"><button id="wifi-scan" class="n0-button n0-button--secondary" type="button" disabled>Scan Wi-Fi networks</button><small>USB Ethernet remains preferred at route metric 100; Wi-Fi uses metric 600.</small></div>
+              <div class="settings-fields wifi-settings-fields">
+                <label>Available network<select name="ssid" disabled required><option value="">Scan to select an SSID</option></select></label>
+                <label>Wi-Fi password<input name="password" type="password" minlength="8" maxlength="64" autocomplete="new-password" disabled></label>
+                <label>Confirm password<input name="confirmation" type="password" minlength="8" maxlength="64" autocomplete="new-password" disabled></label>
+              </div>
+              <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit" disabled>Connect Wi-Fi</button><output aria-live="polite">Unlock Protected operator controls to scan or connect.</output></div>
+              <small class="settings-note">The password is sent only to the local ROC for its root-only Netplan file. Failed association or DHCP automatically restores the previous configuration.</small>
+            </form>
+            <form id="ethernet-settings-form" class="settings-card settings-card--wide">
+              <div class="settings-card-header">
+                <div><h3>ROC Ethernet static address</h3><small>Configure the preferred wired interface with a guarded Netplan change</small></div>
+                <span id="ethernet-current-state" class="application-state">Operator login required</span>
+              </div>
+              <div class="settings-actions ethernet-status-actions">
+                <button id="ethernet-load" class="n0-button n0-button--secondary" type="button" disabled>Load current Ethernet settings</button>
+                <small>The previous configuration is restored unless the new address is confirmed within 3 minutes.</small>
+              </div>
+              <div class="settings-fields ethernet-settings-fields">
+                <label>Ethernet interface<input name="interface" type="text" maxlength="32" readonly required disabled></label>
+                <label>Static IPv4 address/prefix<input name="address_cidr" type="text" maxlength="32" inputmode="decimal" autocomplete="off" placeholder="192.168.68.114/24" required disabled></label>
+                <label>Default gateway<input name="gateway" type="text" maxlength="15" inputmode="decimal" autocomplete="off" placeholder="192.168.68.1" required disabled></label>
+                <label>DNS servers<input name="dns" type="text" maxlength="64" inputmode="decimal" autocomplete="off" placeholder="1.1.1.1,8.8.8.8" required disabled></label>
+              </div>
+              <div class="settings-actions">
+                <div class="settings-button-group">
+                  <button class="n0-button n0-button--primary" type="submit" disabled>Apply static address</button>
+                  <button id="ethernet-confirm" class="n0-button n0-button--secondary" type="button" disabled hidden>Confirm current address</button>
+                </div>
+                <output aria-live="polite">Unlock Protected operator controls to view or change Ethernet settings.</output>
+              </div>
+              <small class="settings-note">After applying a different address, this page will reopen at the new ROC address. Log in there and confirm the change before the rollback timer expires.</small>
+            </form>
             <form class="settings-card" data-application-form="air_traffic">
               <div class="settings-card-header"><div><h3>N0JCG Air Traffic Center</h3><small>Default service port 8090</small></div><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div>
               <div class="settings-fields"><label>Pi IP address or hostname<input name="host" type="text" inputmode="url" autocomplete="off" required></label><label>Web port<input name="port" type="number" min="1" max="65535" required></label></div>
@@ -357,6 +401,19 @@
               <div class="settings-card-header"><div><h3>aprs.fi map access</h3><small>The API key remains on the ROC server and is never returned to the browser</small></div><div class="integration-controls"><span id="aprsfi-configured" class="application-state">Not configured</span><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div></div>
               <div class="settings-fields settings-fields--key"><label>aprs.fi API key<input name="api_key" type="password" autocomplete="new-password" placeholder="Enter a new key or leave blank to keep the saved key"></label></div>
               <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save API key</button><output aria-live="polite"></output><a href="https://aprs.fi/account/" target="_blank" rel="noopener">Open aprs.fi account</a></div>
+            </form>
+            <form id="admin-report-settings-form" class="settings-card settings-card--wide">
+              <div class="settings-card-header">
+                <div><h3>Operator operations report</h3><small>Statistics for the preceding interval; message content and credentials are excluded</small></div>
+                <div class="integration-controls"><span id="admin-report-credentials" class="application-state">Operator login required</span><label class="switch-label"><input name="enabled" type="checkbox" disabled><span>Enabled</span></label></div>
+              </div>
+              <div class="settings-fields admin-report-fields">
+                <label>Send from<input name="sender" type="email" value="ROC@n0jcg.com" readonly aria-readonly="true"></label>
+                <label>Send report to<input name="recipient" type="email" maxlength="254" autocomplete="email" disabled placeholder="operator@example.com"></label>
+                <label>Frequency (hours)<input name="interval_hours" type="number" min="1" max="168" step="1" value="12" required disabled></label>
+              </div>
+              <div class="settings-actions"><div class="settings-button-group"><button class="n0-button n0-button--primary" type="submit" disabled>Save report settings</button><button id="admin-report-send-now" class="n0-button n0-button--secondary" type="button" disabled>Send report now</button></div><output aria-live="polite">Unlock Protected operator controls to view or change these settings.</output></div>
+              <small id="admin-report-delivery" class="settings-note">Reports are sent by the ROC through Cloudflare Email Sending.</small>
             </form>
           </div>
         </section>

@@ -7,9 +7,6 @@ let operationalIntervals = [];
 let serviceInventory = [];
 let applicationInventory = [];
 let latestGateway = null;
-const TELEMETRY_STORAGE_KEY = "n0jcg-roc-overview-telemetry-v1";
-const TELEMETRY_WINDOW_MS = 60 * 60 * 1000;
-const TELEMETRY_MAX_POINTS = 121;
 const TELEMETRY_METRICS = {
   cpu: {label: "CPU utilization", fixedMin: 0, fixedMax: 100, unit: "%"},
   memory: {label: "Memory used", fixedMin: 0, fixedMax: 100, unit: "%"},
@@ -17,19 +14,11 @@ const TELEMETRY_METRICS = {
   aprsFrames: {label: "Decoded APRS frames", unit: ""},
   aircraft: {label: "Aircraft tracked", unit: ""},
   voiceCalls: {label: "Scanner voice calls", unit: ""},
+  vhfLocks: {label: "VHF locks", unit: ""},
+  uhfLocks: {label: "UHF locks", unit: ""},
 };
 
-function loadTelemetryHistory() {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(TELEMETRY_STORAGE_KEY) || "[]");
-    const cutoff = Date.now() - TELEMETRY_WINDOW_MS;
-    return Array.isArray(parsed) ? parsed.filter((point) => Number(point?.timestamp) >= cutoff).slice(-TELEMETRY_MAX_POINTS) : [];
-  } catch (_error) {
-    return [];
-  }
-}
-
-let telemetryHistory = loadTelemetryHistory();
+let telemetryHistory = [];
 
 function trialDataAllowed() {
   return Boolean(registrationState?.registered || registrationState?.data_updates_allowed);
@@ -200,10 +189,6 @@ function telemetryNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function telemetryApplication(payload, id) {
-  return payload?.applications?.find((application) => application.id === id);
-}
-
 function renderTelemetryChart(metricName) {
   const chart = document.querySelector(`#chart-${metricName}`);
   const definition = TELEMETRY_METRICS[metricName];
@@ -263,27 +248,23 @@ function renderTelemetryCharts() {
   Object.keys(TELEMETRY_METRICS).forEach(renderTelemetryChart);
 }
 
-function recordOverviewTelemetry(system, aprs, applications) {
-  const airTraffic = telemetryApplication(applications, "air_traffic");
-  const scanner = telemetryApplication(applications, "scanner");
-  const point = {
-    timestamp: Date.now(),
-    cpu: telemetryNumber(system?.resources?.cpu?.utilization_percent),
-    memory: telemetryNumber(system?.resources?.memory?.used_percent),
-    temperature: telemetryNumber(system?.resources?.temperature?.celsius),
-    aprsFrames: telemetryNumber(aprs?.packet_count),
-    aircraft: airTraffic?.reachable ? telemetryNumber(airTraffic.metrics?.aircraft_count) : null,
-    voiceCalls: scanner?.reachable ? telemetryNumber(scanner.metrics?.voice_calls) : null,
-  };
-  telemetryHistory.push(point);
-  const cutoff = point.timestamp - TELEMETRY_WINDOW_MS;
-  telemetryHistory = telemetryHistory.filter((sample) => sample.timestamp >= cutoff).slice(-TELEMETRY_MAX_POINTS);
-  try {
-    window.localStorage.setItem(TELEMETRY_STORAGE_KEY, JSON.stringify(telemetryHistory));
-  } catch (_error) {
-    // The live chart remains available even if browser storage is disabled.
+function showTelemetryHistory(payload) {
+  telemetryHistory = Array.isArray(payload?.points) ? payload.points : [];
+  const summary = document.querySelector("#telemetry-history-summary");
+  if (summary) {
+    summary.textContent = payload?.sample_count
+      ? `${payload.sample_count} persistent samples · since ${formatTimestamp(payload.first_sample_utc)}`
+      : "Persistent history · waiting for the first sample";
   }
   renderTelemetryCharts();
+}
+
+async function refreshTelemetryHistory() {
+  const response = await fetch("/api/telemetry", {cache: "no-store"});
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Telemetry history API response failed");
+  showTelemetryHistory(payload);
+  return payload;
 }
 
 function formatBytes(value) {
@@ -527,6 +508,313 @@ function initWinlinkSessionModal() {
 }
 
 let operatorCsrfToken = "";
+let adminReportSettingsLoaded = false;
+let wifiNetworks = [];
+let wifiBusy = false;
+let ethernetBusy = false;
+let ethernetSettingsLoaded = false;
+
+function selectedWifiNetwork() {
+  const form = document.querySelector("#wifi-settings-form");
+  return wifiNetworks.find((network) => network.ssid === form?.elements.ssid.value) || null;
+}
+
+function updateWifiFormState() {
+  const form = document.querySelector("#wifi-settings-form");
+  if (!form) return;
+  const locked = !operatorCsrfToken;
+  const network = selectedWifiNetwork();
+  const passwordRequired = Boolean(network?.secured);
+  form.elements.ssid.disabled = locked || wifiBusy || !wifiNetworks.length;
+  form.elements.password.disabled = locked || wifiBusy || !network || !passwordRequired;
+  form.elements.confirmation.disabled = locked || wifiBusy || !network || !passwordRequired;
+  form.elements.password.required = passwordRequired;
+  form.elements.confirmation.required = passwordRequired;
+  form.querySelector("button[type='submit']").disabled = locked || wifiBusy || !network;
+  document.querySelector("#wifi-scan").disabled = locked || wifiBusy;
+}
+
+function setWifiLocked(locked) {
+  const form = document.querySelector("#wifi-settings-form");
+  if (!form) return;
+  if (locked) {
+    wifiNetworks = [];
+    form.elements.ssid.replaceChildren(new Option("Scan to select an SSID", ""));
+    form.elements.password.value = "";
+    form.elements.confirmation.value = "";
+    document.querySelector("#wifi-current-state").textContent = "Operator login required";
+    form.querySelector("output").textContent = "Unlock Protected operator controls to scan or connect.";
+  } else if (!wifiNetworks.length) {
+    document.querySelector("#wifi-current-state").textContent = "Ready to scan";
+  }
+  updateWifiFormState();
+}
+
+function showCurrentWifi(current) {
+  const state = document.querySelector("#wifi-current-state");
+  if (!state) return;
+  if (!current?.ssid) {
+    state.textContent = "Wi-Fi disconnected";
+    state.className = "application-state application-state--offline";
+    return;
+  }
+  state.textContent = `${current.ssid}${current.address ? ` - ${current.address}` : ""}`;
+  state.className = "application-state application-state--online";
+}
+
+async function scanWifiNetworks() {
+  const form = document.querySelector("#wifi-settings-form");
+  const output = form.querySelector("output");
+  wifiBusy = true;
+  updateWifiFormState();
+  output.textContent = "Scanning visible Wi-Fi networks...";
+  try {
+    const response = await fetch("/api/operator/action", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken},
+      body: JSON.stringify({action: "wifi_scan"}),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Wi-Fi scan failed");
+    wifiNetworks = Array.isArray(payload.networks) ? payload.networks : [];
+    const options = [new Option(wifiNetworks.length ? "Select a Wi-Fi network" : "No visible networks found", "")];
+    wifiNetworks.forEach((network) => {
+      const security = network.secured ? "Secured" : "Open";
+      options.push(new Option(`${network.ssid} - ${security} - ${Number(network.signal_dbm).toFixed(0)} dBm`, network.ssid));
+    });
+    form.elements.ssid.replaceChildren(...options);
+    const currentMatch = wifiNetworks.find((network) => network.ssid === payload.current?.ssid);
+    if (currentMatch) form.elements.ssid.value = currentMatch.ssid;
+    showCurrentWifi(payload.current);
+    output.textContent = `${wifiNetworks.length} unique visible ${wifiNetworks.length === 1 ? "network" : "networks"} found.`;
+  } catch (error) {
+    output.textContent = error.message;
+  } finally {
+    wifiBusy = false;
+    updateWifiFormState();
+  }
+}
+
+function initWifiSettings() {
+  const form = document.querySelector("#wifi-settings-form");
+  if (!form) return;
+  document.querySelector("#wifi-scan")?.addEventListener("click", scanWifiNetworks);
+  form.elements.ssid.addEventListener("change", () => {
+    form.elements.password.value = "";
+    form.elements.confirmation.value = "";
+    updateWifiFormState();
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const network = selectedWifiNetwork();
+    const output = form.querySelector("output");
+    if (!network) {
+      output.textContent = "Select a scanned Wi-Fi network.";
+      return;
+    }
+    const password = network.secured ? form.elements.password.value : "";
+    if (network.secured && password !== form.elements.confirmation.value) {
+      output.textContent = "The Wi-Fi passwords do not match.";
+      return;
+    }
+    const validPassword = (password.length >= 8 && password.length <= 63) || (password.length === 64 && /^[0-9a-f]+$/i.test(password));
+    if (network.secured && !validPassword) {
+      output.textContent = "Use 8-63 characters, or exactly 64 hexadecimal characters.";
+      return;
+    }
+    if (!window.confirm(`Connect the ROC Wi-Fi interface to ${network.ssid}? Ethernet remains the preferred route and a failed connection will roll back automatically.`)) return;
+    wifiBusy = true;
+    updateWifiFormState();
+    output.textContent = `Connecting to ${network.ssid}; this can take up to 30 seconds...`;
+    try {
+      const response = await fetch("/api/operator/action", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken},
+        body: JSON.stringify({action: "wifi_connect", ssid: network.ssid, password}),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Wi-Fi connection failed and was rolled back");
+      form.elements.password.value = "";
+      form.elements.confirmation.value = "";
+      showCurrentWifi(payload.current);
+      output.textContent = payload.message || `Connected to ${network.ssid}.`;
+    } catch (error) {
+      form.elements.password.value = "";
+      form.elements.confirmation.value = "";
+      output.textContent = error.message;
+    } finally {
+      wifiBusy = false;
+      updateWifiFormState();
+    }
+  });
+}
+
+function updateEthernetFormState(pending = false) {
+  const form = document.querySelector("#ethernet-settings-form");
+  if (!form) return;
+  const locked = !operatorCsrfToken;
+  document.querySelector("#ethernet-load").disabled = locked || ethernetBusy;
+  form.elements.interface.disabled = locked || ethernetBusy;
+  form.elements.address_cidr.disabled = locked || ethernetBusy || pending;
+  form.elements.gateway.disabled = locked || ethernetBusy || pending;
+  form.elements.dns.disabled = locked || ethernetBusy || pending;
+  form.querySelector("button[type='submit']").disabled = locked || ethernetBusy || pending || !form.elements.interface.value;
+  const confirmButton = document.querySelector("#ethernet-confirm");
+  confirmButton.hidden = !pending;
+  confirmButton.disabled = locked || ethernetBusy || !pending;
+  form.dataset.pending = pending ? "true" : "false";
+}
+
+function setEthernetLocked(locked) {
+  const form = document.querySelector("#ethernet-settings-form");
+  if (!form) return;
+  if (locked) {
+    ethernetSettingsLoaded = false;
+    document.querySelector("#ethernet-current-state").textContent = "Operator login required";
+    form.querySelector("output").textContent = "Unlock Protected operator controls to view or change Ethernet settings.";
+  }
+  updateEthernetFormState(form.dataset.pending === "true");
+}
+
+function showEthernetStatus(status) {
+  const form = document.querySelector("#ethernet-settings-form");
+  const state = document.querySelector("#ethernet-current-state");
+  if (!form || !status) return;
+  form.elements.interface.value = status.interface || "";
+  form.elements.address_cidr.value = status.address_cidr || "";
+  form.elements.gateway.value = status.gateway || "";
+  if (status.dns) form.elements.dns.value = status.dns;
+  state.textContent = status.pending
+    ? `Confirmation pending - ${status.address_cidr}`
+    : status.address_cidr || "No wired IPv4 address";
+  state.className = `application-state ${status.address_cidr ? "application-state--online" : "application-state--offline"}`;
+  updateEthernetFormState(Boolean(status.pending));
+}
+
+async function ethernetAction(action, settings = {}) {
+  const response = await fetch("/api/operator/action", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken},
+    body: JSON.stringify({action, ...settings}),
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) throw new Error(payload.error || "Ethernet operation failed");
+  return payload;
+}
+
+async function loadEthernetStatus() {
+  const form = document.querySelector("#ethernet-settings-form");
+  const output = form.querySelector("output");
+  ethernetBusy = true;
+  updateEthernetFormState(form.dataset.pending === "true");
+  output.textContent = "Reading current Ethernet settings...";
+  try {
+    const payload = await ethernetAction("ethernet_status");
+    showEthernetStatus(payload.ethernet);
+    ethernetSettingsLoaded = true;
+    output.textContent = payload.ethernet?.pending
+      ? "Reconnect at the pending address and confirm it before the 3-minute rollback expires."
+      : "Current wired interface settings loaded.";
+  } catch (error) {
+    output.textContent = error.message;
+  } finally {
+    ethernetBusy = false;
+    updateEthernetFormState(form.dataset.pending === "true");
+  }
+}
+
+function initEthernetSettings() {
+  const form = document.querySelector("#ethernet-settings-form");
+  if (!form) return;
+  document.querySelector("#ethernet-load")?.addEventListener("click", loadEthernetStatus);
+  document.querySelector("#ethernet-confirm")?.addEventListener("click", async () => {
+    if (!window.confirm("Confirm this static Ethernet address and cancel the automatic rollback?")) return;
+    ethernetBusy = true;
+    updateEthernetFormState(true);
+    try {
+      const payload = await ethernetAction("ethernet_confirm");
+      showEthernetStatus(payload.ethernet);
+      form.querySelector("output").textContent = payload.message || "Static Ethernet address confirmed.";
+    } catch (error) {
+      form.querySelector("output").textContent = error.message;
+    } finally {
+      ethernetBusy = false;
+      updateEthernetFormState(form.dataset.pending === "true");
+    }
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const settings = {
+      interface: form.elements.interface.value.trim(),
+      address_cidr: form.elements.address_cidr.value.trim(),
+      gateway: form.elements.gateway.value.trim(),
+      dns: form.elements.dns.value.trim(),
+    };
+    if (!window.confirm(`Apply ${settings.address_cidr} to ${settings.interface}? The old configuration will return automatically unless this address is confirmed within 3 minutes.`)) return;
+    const host = settings.address_cidr.split("/")[0];
+    const port = window.location.port ? `:${window.location.port}` : "";
+    const reconnectUrl = `${window.location.protocol}//${host}${port}/#application-settings`;
+    ethernetBusy = true;
+    updateEthernetFormState(false);
+    form.querySelector("output").textContent = "Applying the static address and starting the rollback timer...";
+    try {
+      const payload = await ethernetAction("ethernet_set", settings);
+      showEthernetStatus(payload.ethernet);
+      form.querySelector("output").textContent = `${payload.message}. Reopening ${reconnectUrl}`;
+      window.setTimeout(() => window.location.assign(reconnectUrl), 2500);
+    } catch (error) {
+      form.querySelector("output").textContent = error.message;
+    } finally {
+      ethernetBusy = false;
+      updateEthernetFormState(form.dataset.pending === "true");
+    }
+  });
+}
+
+function setAdminReportLocked(locked) {
+  const form = document.querySelector("#admin-report-settings-form");
+  if (!form) return;
+  form.elements.enabled.disabled = locked;
+  form.elements.recipient.disabled = locked;
+  form.elements.interval_hours.disabled = locked;
+  form.querySelector("button[type='submit']").disabled = locked;
+  document.querySelector("#admin-report-send-now").disabled = locked;
+  if (locked) {
+    adminReportSettingsLoaded = false;
+    document.querySelector("#admin-report-credentials").textContent = "Operator login required";
+    form.querySelector("output").textContent = "Unlock Protected operator controls to view or change these settings.";
+  }
+}
+
+function showAdminReportSettings(payload) {
+  const form = document.querySelector("#admin-report-settings-form");
+  if (!form) return;
+  form.elements.enabled.checked = Boolean(payload.enabled);
+  form.elements.recipient.value = payload.recipient || "";
+  form.elements.interval_hours.value = payload.interval_hours || 12;
+  form.elements.sender.value = payload.sender || "ROC@n0jcg.com";
+  const credentialState = document.querySelector("#admin-report-credentials");
+  credentialState.textContent = payload.credentials_configured ? "Email service ready" : "Email credentials required";
+  credentialState.className = `application-state application-state--${payload.credentials_configured ? "online" : "offline"}`;
+  const delivery = payload.delivery || {};
+  document.querySelector("#admin-report-delivery").textContent = delivery.last_sent_utc
+    ? `Last sent ${formatTimestamp(delivery.last_sent_utc)} · next ${formatTimestamp(delivery.next_due_utc)}`
+    : (delivery.next_due_utc ? `Next report ${formatTimestamp(delivery.next_due_utc)}` : "No report has been sent yet.");
+  setAdminReportLocked(false);
+  document.querySelector("#admin-report-send-now").disabled = !payload.enabled || !payload.credentials_configured || Boolean(payload.send_now_queued);
+  adminReportSettingsLoaded = true;
+}
+
+async function loadAdminReportSettings() {
+  const response = await fetch("/api/admin-report/settings", {cache: "no-store", credentials: "same-origin"});
+  if (!response.ok) throw new Error(response.status === 401 ? "Operator login required" : "Report settings request failed");
+  const payload = await response.json();
+  showAdminReportSettings(payload);
+  return payload;
+}
 
 function showOperatorStatus(status) {
   const badge = document.querySelector("#operator-auth-state");
@@ -536,6 +824,14 @@ function showOperatorStatus(status) {
   const cmsTest = document.querySelector('[data-operator-action="cms_test"]');
   const cmsGuard = document.querySelector("#operator-cms-guard");
   operatorCsrfToken = status.csrf_token || "";
+  const telemetryReset = document.querySelector("#telemetry-reset");
+  if (telemetryReset) {
+    telemetryReset.disabled = !status.authenticated;
+    telemetryReset.title = status.authenticated ? "Delete all stored trend history" : "Operator login required to reset trends";
+  }
+  setAdminReportLocked(!status.authenticated);
+  setWifiLocked(!status.authenticated);
+  setEthernetLocked(!status.authenticated);
   setup.hidden = status.configured;
   login.hidden = !status.configured || status.authenticated;
   actions.hidden = !status.authenticated;
@@ -543,7 +839,7 @@ function showOperatorStatus(status) {
     badge.textContent = "Setup required";
     badge.className = "n0-status n0-status--advisory";
   } else if (status.authenticated) {
-    badge.textContent = status.maintenance_mode ? "Maintenance" : "Administrator";
+    badge.textContent = status.maintenance_mode ? "Maintenance" : "Operator";
     badge.className = `n0-status ${status.maintenance_mode ? "n0-status--advisory" : "n0-status--operational"}`;
   } else {
     badge.textContent = "Locked";
@@ -571,6 +867,12 @@ async function refreshOperatorStatus() {
   if (!response.ok) throw new Error("Operator status request failed");
   const status = await response.json();
   showOperatorStatus(status);
+  if (status.authenticated && !adminReportSettingsLoaded) {
+    await loadAdminReportSettings();
+  }
+  if (status.authenticated && !ethernetSettingsLoaded) {
+    await loadEthernetStatus();
+  }
   return status;
 }
 
@@ -630,7 +932,7 @@ function initOperatorControls() {
       form.reset();
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Login failed");
       operatorCsrfToken = payload.csrf_token;
-      operatorMessage("Administrator session unlocked for 30 minutes.");
+      operatorMessage("Operator session unlocked for 30 minutes.");
       await refreshOperatorStatus();
     } catch (error) {
       form.elements.password.value = "";
@@ -650,7 +952,8 @@ function initOperatorControls() {
       body: "{}",
     });
     operatorCsrfToken = "";
-    operatorMessage(response.ok ? "Administrator session locked." : "Sign out failed.", !response.ok);
+    adminReportSettingsLoaded = false;
+    operatorMessage(response.ok ? "Operator session locked." : "Sign out failed.", !response.ok);
     await refreshOperatorStatus();
   });
   document.querySelector("#operator-diagnostics")?.addEventListener("click", async () => {
@@ -670,8 +973,96 @@ function initOperatorControls() {
       operatorMessage(error.message, true);
     }
   });
+  document.querySelector("#telemetry-reset")?.addEventListener("click", async () => {
+    if (!window.confirm("Permanently delete all stored Performance Trends history? This cannot be undone.")) return;
+    const button = document.querySelector("#telemetry-reset");
+    const output = document.querySelector("#telemetry-reset-result");
+    button.disabled = true;
+    output.textContent = "Resetting…";
+    try {
+      const response = await fetch("/api/telemetry/reset", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken},
+        body: "{}",
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Trend history could not be reset");
+      showTelemetryHistory(payload);
+      output.textContent = `${payload.deleted_samples} stored samples deleted.`;
+    } catch (error) {
+      output.textContent = error.message;
+    } finally {
+      button.disabled = !operatorCsrfToken;
+    }
+  });
   refreshOperatorStatus().catch((error) => operatorMessage(error.message, true));
   window.setInterval(() => refreshOperatorStatus().catch(() => {}), 5000);
+}
+
+function initAdminReportSettings() {
+  const form = document.querySelector("#admin-report-settings-form");
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const output = form.querySelector("output");
+    const button = form.querySelector("button[type='submit']");
+    output.textContent = "Saving…";
+    button.disabled = true;
+    try {
+      const response = await fetch("/api/admin-report/settings", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken},
+        body: JSON.stringify({
+          enabled: form.elements.enabled.checked,
+          recipient: form.elements.recipient.value.trim(),
+          interval_hours: Number(form.elements.interval_hours.value),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Report settings could not be saved");
+      showAdminReportSettings(payload);
+      output.textContent = payload.enabled ? "Periodic reports enabled." : "Periodic reports disabled.";
+    } catch (error) {
+      output.textContent = error.message;
+    } finally {
+      button.disabled = !operatorCsrfToken;
+    }
+  });
+  document.querySelector("#admin-report-send-now")?.addEventListener("click", async () => {
+    const output = form.querySelector("output");
+    const button = document.querySelector("#admin-report-send-now");
+    button.disabled = true;
+    output.textContent = "Queuing operator report…";
+    try {
+      const response = await fetch("/api/admin-report/send-now", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken},
+        body: "{}",
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Report could not be queued");
+      output.textContent = "Report queued. Waiting for delivery status…";
+      const requestedUtc = payload.requested_utc;
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+        const status = await loadAdminReportSettings();
+        const attemptedUtc = status.delivery?.last_attempt_utc;
+        if (attemptedUtc && (!requestedUtc || attemptedUtc >= requestedUtc)) {
+          if (status.delivery.status === "sent") output.textContent = "Operator report sent successfully.";
+          else output.textContent = status.delivery.error || "Operator report delivery failed.";
+          return;
+        }
+      }
+      output.textContent = "Report remains queued; delivery status will update shortly.";
+    } catch (error) {
+      output.textContent = error.message;
+    } finally {
+      await loadAdminReportSettings().catch(() => {});
+    }
+  });
+  setAdminReportLocked(true);
 }
 
 function showSystem(system) {
@@ -690,8 +1081,12 @@ function showSystem(system) {
   document.querySelector("#metric-temperature-detail").textContent = system.resources.temperature?.source || "CPU temperature sensor unavailable";
   document.querySelector("#metric-disk").textContent = formatBytes(system.resources.disk.free_bytes);
   document.querySelector("#metric-disk-total").textContent = `${formatBytes(system.resources.disk.total_bytes)} total`;
-  document.querySelector("#metric-tools").textContent = system.tooling.ready ? "Ready" : "Incomplete";
-  document.querySelector("#metric-tools-detail").textContent = system.tooling.ready ? "All declared base tools found" : `Missing: ${system.tooling.missing.join(", ")}`;
+  const requiredTools = Object.keys(system.tooling.commands || {});
+  const installedTools = requiredTools.filter((tool) => system.tooling.commands[tool]);
+  document.querySelector("#metric-tools").textContent = `${installedTools.length}/${requiredTools.length} installed`;
+  document.querySelector("#metric-tools-detail").textContent = system.tooling.ready
+    ? "All ROC software prerequisites are installed"
+    : `Missing: ${system.tooling.missing.join(", ")}`;
 
   const hardwareCount = system.hardware.serial_by_id.length + system.hardware.usb_audio_cards.length + system.hardware.rtl_sdr_count;
   document.querySelector("#metric-hardware").textContent = hardwareCount ? `${hardwareCount} detected` : "None";
@@ -734,8 +1129,13 @@ function initStationSettings() {
 }
 
 function showAprs(aprs) {
-  document.querySelector("#metric-aprs").textContent = aprs.active ? "Active" : (aprs.configured ? "Stopped" : "Not configured");
-  document.querySelector("#metric-aprs-detail").textContent = aprs.active ? "RTL-SDR receive-only path" : "Listener not running";
+  const pipeline = aprs.pipeline || {};
+  const state = pipeline.state || (aprs.active ? "healthy" : "fault");
+  const labels = {healthy: "Healthy", degraded: "Degraded", fault: "Fault", stopped: "Stopped"};
+  const metric = document.querySelector("#metric-aprs");
+  metric.textContent = labels[state] || state;
+  metric.dataset.pipelineState = state;
+  document.querySelector("#metric-aprs-detail").textContent = pipeline.summary || (aprs.active ? "RTL-SDR receive-only path" : "Listener not running");
   document.querySelector("#metric-aprs-packets").textContent = String(aprs.packet_count ?? 0);
   document.querySelector("#metric-aprs-packets-detail").textContent = aprs.packet_count ? "RF and Internet APRS frames" : "No APRS frames yet";
   const latest = aprs.last_packet || "—";
@@ -759,6 +1159,27 @@ function showAprs(aprs) {
   document.querySelector("#metric-aprs-latest-detail").textContent = aprs.last_packet
     ? `${latestOrigin} · ${aprs.last_packet_timestamp_utc || "timestamp unavailable"}`
     : "Waiting for an APRS frame";
+  const detail = document.querySelector("#metric-aprs-detail");
+  if (detail && pipeline.last_rf_packet_timestamp_utc) {
+    detail.title = `Last RF decode: ${pipeline.last_rf_packet_timestamp_utc}; pipeline activity: ${pipeline.last_pipeline_activity_utc || "unknown"}`;
+  }
+}
+
+function showAprsDigipeaterSurvey(payload) {
+  const message = document.querySelector("#aprs-digi-survey-message");
+  const list = document.querySelector("#aprs-digi-survey-list");
+  if (!message || !list) return;
+  document.querySelector("#aprs-digi-survey-window").textContent = `${payload.window_hours || 72}-hour window`;
+  message.textContent = payload.message || "No survey result available.";
+  list.replaceChildren();
+  (payload.observed || []).forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "aprs-digi-survey-row";
+    const distance = item.source_distance_km == null ? "source distance unavailable" : `source ${item.source_distance_km} km from ROC`;
+    row.innerHTML = `<strong></strong><span>${item.count} used hop${item.count === 1 ? "" : "s"} · last heard ${item.last_heard_utc || "unknown"} · ${distance}</span>`;
+    row.querySelector("strong").textContent = item.callsign;
+    list.appendChild(row);
+  });
 }
 
 let aprsFramePage = 1;
@@ -857,6 +1278,7 @@ function stationPopup(station) {
   heading.textContent = station.callsign;
   panel.appendChild(heading);
   [
+    station.heard_utc ? `Heard by ROC: ${station.heard_utc}` : null,
     station.last_report_utc ? `Last APRS report: ${station.last_report_utc}` : null,
     station.symbol ? `APRS symbol: ${station.symbol}` : null,
     station.comment || null,
@@ -866,6 +1288,12 @@ function stationPopup(station) {
     line.textContent = text;
     panel.appendChild(line);
   });
+  if (station.heard_frame) {
+    const frame = document.createElement("code");
+    frame.className = "aprs-marker-frame";
+    frame.textContent = station.heard_frame;
+    panel.appendChild(frame);
+  }
   const link = document.createElement("a");
   link.href = station.aprsfi_url;
   link.target = "_blank";
@@ -873,6 +1301,13 @@ function stationPopup(station) {
   link.textContent = "Open on aprs.fi";
   panel.appendChild(link);
   return panel;
+}
+
+function focusAprsRocArea() {
+  if (!aprsMap) return;
+  aprsMap.invalidateSize();
+  if (aprsLocalBounds?.isValid()) aprsMap.fitBounds(aprsLocalBounds.pad(0.35), {maxZoom: 17});
+  else aprsMap.setView([aprsMapCenter.latitude, aprsMapCenter.longitude], 8);
 }
 
 function distanceKm(first, second) {
@@ -926,7 +1361,7 @@ function showAprsMap(payload) {
     if (localStations.length) {
       const localBounds = L.latLngBounds(localStations.map((station) => [station.latitude, station.longitude]));
       aprsLocalBounds = localBounds;
-      aprsMap.fitBounds(localBounds.pad(0.35), {maxZoom: 17});
+      focusAprsRocArea();
     } else {
       aprsLocalBounds = null;
       aprsMap.setView([mapCenter.latitude, mapCenter.longitude], 8);
@@ -936,7 +1371,8 @@ function showAprsMap(payload) {
     message.hidden = false;
     message.textContent = payload.message || payload.error || "No aprs.fi positions were found for recently heard callsigns.";
   }
-  window.setTimeout(() => aprsMap.invalidateSize(), 0);
+  window.requestAnimationFrame(focusAprsRocArea);
+  window.setTimeout(focusAprsRocArea, 220);
 }
 
 async function loadAprsMap(forceRefresh = false) {
@@ -962,9 +1398,7 @@ function initAprsMapSettings() {
   document.querySelector("#aprs-map-zoom-in").addEventListener("click", () => aprsMap?.zoomIn());
   document.querySelector("#aprs-map-zoom-out").addEventListener("click", () => aprsMap?.zoomOut());
   document.querySelector("#aprs-map-roc-area").addEventListener("click", () => {
-    if (!aprsMap) return;
-    if (aprsLocalBounds?.isValid()) aprsMap.fitBounds(aprsLocalBounds.pad(0.35), {maxZoom: 17});
-    else aprsMap.setView([aprsMapCenter.latitude, aprsMapCenter.longitude], 8);
+    focusAprsRocArea();
   });
   document.querySelector("#aprs-map-show-all").addEventListener("click", () => {
     if (aprsMap && aprsAllBounds?.isValid()) aprsMap.fitBounds(aprsAllBounds.pad(0.12), {maxZoom: 12});
@@ -1099,22 +1533,24 @@ async function refreshApplications() {
 
 async function refreshOverviewTelemetry() {
   if (!trialDataAllowed()) return null;
-  const [systemResponse, aprsResponse, applicationsResponse] = await Promise.all([
+  const [systemResponse, aprsResponse, applicationsResponse, telemetryResponse] = await Promise.all([
     fetch("/api/system", {cache: "no-store"}),
     fetch("/api/aprs", {cache: "no-store"}),
     fetch("/api/applications", {cache: "no-store"}),
+    fetch("/api/telemetry", {cache: "no-store"}),
   ]);
-  if (![systemResponse, aprsResponse, applicationsResponse].every((response) => response.ok)) {
+  if (![systemResponse, aprsResponse, applicationsResponse, telemetryResponse].every((response) => response.ok)) {
     throw new Error("Overview telemetry API response failed");
   }
   const system = await systemResponse.json();
   const aprs = await aprsResponse.json();
   const applications = await applicationsResponse.json();
+  const telemetry = await telemetryResponse.json();
   showSystem(system);
   showAprs(aprs);
   showApplications(applications);
-  recordOverviewTelemetry(system, aprs, applications);
-  return {system, aprs, applications};
+  showTelemetryHistory(telemetry);
+  return {system, aprs, applications, telemetry};
 }
 
 function initApplicationSettings() {
@@ -1158,6 +1594,8 @@ function showWeather(status) {
     detail.textContent = status.message || "Waiting for GW1100/WS90 data";
     document.querySelector("#weather-gateway").textContent = "Offline";
     document.querySelector("#weather-updated").textContent = "Waiting for gateway";
+    document.querySelector("#weather-lightning").textContent = "—";
+    document.querySelector("#weather-lightning-detail").textContent = "Waiting for WH57 sensor";
     return;
   }
   const fields = status.observation.fields || {};
@@ -1194,6 +1632,23 @@ function showWeather(status) {
   document.querySelector("#weather-rain-detail").textContent = fields.rain_today_mm == null ? "Today —" : `Today ${value(inches(fields.rain_today_mm), 2)} in`;
   document.querySelector("#weather-uv").textContent = fields.uv_index == null ? "—" : `UV ${value(fields.uv_index, 1)}`;
   document.querySelector("#weather-solar").textContent = fields.solar_w_m2 == null ? "Solar —" : `${value(fields.solar_w_m2, 0)} W/m²`;
+  const lightningDetected = Boolean(status.observation.lightning_sensor_detected);
+  const lightningCount = fields.lightning_count == null ? null : Number(fields.lightning_count);
+  const lightningDistance = fields.lightning_distance && !String(fields.lightning_distance).includes("--") ? String(fields.lightning_distance) : null;
+  const lightningLast = fields.lightning_last_local && !String(fields.lightning_last_local).includes("--") ? String(fields.lightning_last_local) : null;
+  document.querySelector("#weather-lightning").textContent = !lightningDetected
+    ? "Not detected"
+    : lightningCount == null
+      ? "—"
+      : `${lightningCount.toFixed(0)} ${lightningCount === 1 ? "strike" : "strikes"}`;
+  document.querySelector("#weather-lightning-detail").textContent = !lightningDetected
+    ? "WH57 not detected by gateway"
+    : [
+      lightningLast ? `Last ${lightningLast}` : "No strike recorded",
+      lightningDistance ? `${lightningDistance} away` : null,
+      fields.lightning_battery_level == null ? null : `battery ${value(fields.lightning_battery_level, 0)}`,
+      fields.lightning_signal_dbm == null ? null : `${value(fields.lightning_signal_dbm, 0)} dBm`,
+    ].filter(Boolean).join(" · ");
   document.querySelector("#weather-indoor").textContent = fields.indoor_temperature_c == null ? "—" : `${value(fahrenheit(fields.indoor_temperature_c))} °F`;
   document.querySelector("#weather-indoor-detail").textContent = fields.indoor_humidity_percent == null ? "GW1100 sensor" : `${value(fields.indoor_humidity_percent, 0)}% RH`;
   document.querySelector("#weather-gateway").textContent = status.stale ? "Stale" : "Online";
@@ -1214,7 +1669,7 @@ async function refreshWeather() {
 async function loadOperationalData() {
   if (!trialDataAllowed()) return;
   try {
-    const [healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse, weatherResponse, applicationsResponse, gatewayResponse] = await Promise.all([
+    const [healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse, weatherResponse, applicationsResponse, gatewayResponse, telemetryResponse, digipeaterResponse] = await Promise.all([
       fetch("/api/health"),
       fetch("/api/station"),
       fetch("/api/services"),
@@ -1223,8 +1678,10 @@ async function loadOperationalData() {
       fetch("/api/weather"),
       fetch("/api/applications", {cache: "no-store"}),
       fetch("/api/gateway", {cache: "no-store"}),
+      fetch("/api/telemetry", {cache: "no-store"}),
+      fetch("/api/aprs/digipeaters", {cache: "no-store"}),
     ]);
-    if (![healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse, weatherResponse, applicationsResponse, gatewayResponse].every((response) => response.ok)) {
+    if (![healthResponse, stationResponse, servicesResponse, systemResponse, aprsResponse, weatherResponse, applicationsResponse, gatewayResponse, telemetryResponse, digipeaterResponse].every((response) => response.ok)) {
       throw new Error("API response failed");
     }
     const health = await healthResponse.json();
@@ -1235,6 +1692,8 @@ async function loadOperationalData() {
     const weather = await weatherResponse.json();
     const applications = await applicationsResponse.json();
     const gateway = await gatewayResponse.json();
+    const telemetry = await telemetryResponse.json();
+    const digipeaterSurvey = await digipeaterResponse.json();
 
     badge.textContent = "Operational";
     badge.className = "n0-status n0-status--operational";
@@ -1257,10 +1716,11 @@ async function loadOperationalData() {
     serviceInventory = inventory.services;
     showSystem(system);
     showAprs(aprs);
+    showAprsDigipeaterSurvey(digipeaterSurvey);
     loadAprsMap();
     showApplications(applications);
     showServices(gateway);
-    recordOverviewTelemetry(system, aprs, applications);
+    showTelemetryHistory(telemetry);
     showWeather(weather);
     showWinlink(gateway);
     operationalStarted = true;
@@ -1286,6 +1746,9 @@ async function start() {
   initApplicationSettings();
   initWinlinkSessionModal();
   initOperatorControls();
+  initAdminReportSettings();
+  initWifiSettings();
+  initEthernetSettings();
   try {
     await refreshRegistration();
     window.setInterval(() => refreshRegistration().catch((error) => {
@@ -1348,8 +1811,8 @@ function showWorkspacePanel(hash, {updateHistory = false, scroll = true} = {}) {
     window.requestAnimationFrame(() => document.querySelector(selectedHash)?.scrollIntoView({block: "start"}));
   }
   if (panelName === "aprs" && aprsMap) {
-    window.requestAnimationFrame(() => aprsMap.invalidateSize());
-    window.setTimeout(() => aprsMap.invalidateSize(), 220);
+    window.requestAnimationFrame(focusAprsRocArea);
+    window.setTimeout(focusAprsRocArea, 220);
   }
 }
 

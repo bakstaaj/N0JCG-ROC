@@ -18,8 +18,17 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from n0jcg_roc.config import DEFAULT_CONFIG, transmit_interlock  # noqa: E402
 from n0jcg_roc.applications import load_application_settings, save_application_settings  # noqa: E402
+from n0jcg_roc.admin_report import (  # noqa: E402
+    SENDER_ADDRESS,
+    load_report_settings,
+    queue_report_now,
+    report_due,
+    save_report_settings,
+    send_cloudflare_email,
+)
 from n0jcg_roc.aprs_map import (  # noqa: E402
     _heard_activity_from_lines,
+    _heard_activity_from_journal,
     _station_entry,
     heard_callsigns,
     load_aprsfi_settings,
@@ -34,6 +43,7 @@ from n0jcg_roc.licensing import (  # noqa: E402
     installation_serial_from_identity,
 )
 from n0jcg_roc.station_settings import load_station_settings  # noqa: E402
+from n0jcg_roc.telemetry import read_telemetry, record_telemetry, reset_telemetry  # noqa: E402
 from n0jcg_roc.weather import normalize_gateway_live_data, normalize_observation  # noqa: E402
 from n0jcg_roc.winlink import (  # noqa: E402
     merge_sessions,
@@ -100,6 +110,13 @@ class SafetyTests(unittest.TestCase):
         self.assertIn('action == "maintenance_on"', helper)
         self.assertIn('action == "maintenance_off"', helper)
         self.assertIn('action == "cms_test"', helper)
+        self.assertIn('action == "wifi_scan"', helper)
+        self.assertIn('action == "wifi_connect"', helper)
+        self.assertIn('action == "ethernet_status"', helper)
+        self.assertIn('action == "ethernet_set"', helper)
+        self.assertIn('action == "ethernet_confirm"', helper)
+        self.assertIn("--scan-json", helper)
+        self.assertIn("--connect", helper)
         self.assertIn('action == "trial_services_stop"', helper)
         self.assertIn('action == "trial_services_start"', helper)
         self.assertIn('"n0jcg-aprs-rx.service"', helper)
@@ -108,6 +125,17 @@ class SafetyTests(unittest.TestCase):
         self.assertNotIn("shell=True", helper)
         self.assertIn("NoNewPrivileges=true", helper_service)
         self.assertIn("ProtectSystem=strict", helper_service)
+        self.assertIn("/etc/netplan", helper_service)
+        self.assertIn("/run/n0jcg-operator-helper", helper_service)
+        self.assertIn("/run/netplan", helper_service)
+        self.assertIn("/run/systemd/network", helper_service)
+        self.assertIn("/run/systemd/system", helper_service)
+        self.assertIn("/run/udev/rules.d", helper_service)
+        ethernet = (ROOT / "tools" / "configure_ethernet.sh").read_text(encoding="utf-8")
+        self.assertIn("--status-json", ethernet)
+        self.assertIn("--confirm", ethernet)
+        self.assertIn("--on-active=3m", ethernet)
+        self.assertIn("netplan apply", ethernet)
         deploy = (ROOT / "deploy" / "deploy.sh").read_text(encoding="utf-8")
         deployed_validator = (ROOT / "deploy" / "validate_deployed.sh").read_text(encoding="utf-8")
         self.assertNotIn("health[\"transmit\"][\"ready\"] is False", deployed_validator)
@@ -155,6 +183,12 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("APPLICATION 1,RMS,C 1 CMS,N0JCG-10,N0RMS,255", bpq)
         self.assertIn("APPLICATION 2,BBS,,N0JCG-11", bpq)
         self.assertIn("LINMAIL", bpq)
+        vara_env = (ROOT / "config" / "winlink-rms.env.example").read_text(encoding="utf-8")
+        self.assertIn("VARA_FM_ENABLED=0", vara_env)
+        vara_service = (ROOT / "deploy" / "n0jcg-vara-fm.service").read_text(encoding="utf-8")
+        self.assertIn("run-vara-fm.sh", vara_service)
+        self.assertIn("INTERLOCK=1", (ROOT / "deploy" / "configure_winlink_rms.sh").read_text(encoding="utf-8"))
+        self.assertTrue((ROOT / "docs" / "VARA_FM_COMMISSIONING.md").is_file())
         linmail = (ROOT / "config" / "linmail.winlink-postoffice.example.cfg").read_text(encoding="utf-8")
         self.assertIn('BBSName = "__POST_OFFICE_CALL__"', linmail)
         self.assertIn('ConnectScript = "c 1 CMS"', linmail)
@@ -292,6 +326,10 @@ class ServerTests(unittest.TestCase):
         cls.aprsfi_settings_path = Path(cls.application_temp.name) / "aprs-fi.json"
         cls.aprsfi_cache_path = Path(cls.application_temp.name) / "aprs-fi-cache.json"
         cls.station_settings_path = Path(cls.application_temp.name) / "station.json"
+        cls.admin_report_settings_path = Path(cls.application_temp.name) / "admin-report.json"
+        cls.admin_report_state_path = Path(cls.application_temp.name) / "admin-report-state.json"
+        cls.admin_report_trigger_path = Path(cls.application_temp.name) / "admin-report-send-now.json"
+        cls.telemetry_path = Path(cls.application_temp.name) / "telemetry.sqlite3"
         cls.operator_audit_path = Path(cls.application_temp.name) / "operator-audit.jsonl"
         cls.operator_socket_path = Path(cls.application_temp.name) / "operator.sock"
         cls.maintenance_path = Path(cls.application_temp.name) / "maintenance"
@@ -317,10 +355,15 @@ class ServerTests(unittest.TestCase):
             aprsfi_settings_path=cls.aprsfi_settings_path,
             aprsfi_cache_path=cls.aprsfi_cache_path,
             station_settings_path=cls.station_settings_path,
+            admin_report_settings_path=cls.admin_report_settings_path,
+            admin_report_state_path=cls.admin_report_state_path,
+            admin_report_trigger_path=cls.admin_report_trigger_path,
+            telemetry_path=cls.telemetry_path,
             operator_audit_path=cls.operator_audit_path,
             operator_socket_path=cls.operator_socket_path,
             maintenance_path=cls.maintenance_path,
             trial_controller=cls.trial_controller,
+            start_telemetry_collector=False,
         )
         cls.thread = Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -354,6 +397,21 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(media_type, "application/json")
         self.assertEqual(payload["status"], "ok")
         self.assertFalse(payload["transmit"]["ready"])
+
+    def test_telemetry_is_persistent_until_explicit_reset(self) -> None:
+        timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+        sample = {"timestamp": timestamp, "cpu": 12.5, "aprsFrames": 42, "voiceCalls": 7}
+        payload = record_telemetry(sample, self.telemetry_path)
+        self.assertTrue(payload["persistent"])
+        self.assertEqual(payload["sample_count"], 1)
+        self.assertEqual(payload["points"][0]["aprsFrames"], 42)
+        self.assertEqual(json.loads(self.get("/api/telemetry")[2])["sample_count"], 1)
+        with self.assertRaises(HTTPError) as unauthenticated:
+            self.post("/api/telemetry/reset", {})
+        self.assertEqual(unauthenticated.exception.code, 401)
+        unauthenticated.exception.close()
+        self.assertEqual(reset_telemetry(self.telemetry_path)["deleted_samples"], 1)
+        self.assertEqual(read_telemetry(self.telemetry_path)["sample_count"], 0)
 
     def test_registration_status_rejects_trial_reset_until_expired(self) -> None:
         status, media_type, body = self.get("/api/license/status")
@@ -392,6 +450,125 @@ class ServerTests(unittest.TestCase):
         self.assertIsNotNone(auth.verify_session(token, csrf_token=csrf, now=1001))
         self.assertIsNone(auth.verify_session(token, csrf_token="wrong", now=1001))
         self.assertIsNone(auth.verify_session(token, csrf_token=csrf, now=1000 + 1800))
+
+    def test_admin_report_settings_are_validated_and_sender_is_fixed(self) -> None:
+        settings = save_report_settings(
+            self.admin_report_settings_path,
+            {"enabled": True, "recipient": "operator@example.com", "interval_hours": 12},
+            now=datetime(2026, 8, 11, 6, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(settings["recipient"], "operator@example.com")
+        self.assertEqual(settings["interval_hours"], 12)
+        self.assertEqual(load_report_settings(self.admin_report_settings_path), settings)
+        due, next_due = report_due(settings, {}, datetime(2026, 8, 11, 17, 59, tzinfo=timezone.utc))
+        self.assertFalse(due)
+        self.assertEqual(next_due, "2026-08-11T18:00:00Z")
+        due, _ = report_due(settings, {}, datetime(2026, 8, 11, 18, 0, tzinfo=timezone.utc))
+        self.assertTrue(due)
+        with self.assertRaisesRegex(ValueError, "valid email"):
+            save_report_settings(self.admin_report_settings_path, {"recipient": "not-an-email"})
+
+        request = queue_report_now(
+            self.admin_report_settings_path,
+            self.admin_report_trigger_path,
+            now=datetime(2026, 8, 11, 18, 1, tzinfo=timezone.utc),
+        )
+        self.assertEqual(request["requested_utc"], "2026-08-11T18:01:00Z")
+        self.assertTrue(self.admin_report_trigger_path.is_file())
+        self.admin_report_trigger_path.unlink()
+
+    def test_cloudflare_email_request_uses_fixed_roc_sender_and_server_token(self) -> None:
+        captured = {}
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return b'{"success":true,"result":{"delivered":["operator@example.com"],"queued":[],"permanent_bounces":[]}}'
+
+        def opener(request, timeout):
+            captured["url"] = request.full_url
+            captured["headers"] = dict(request.header_items())
+            captured["payload"] = json.loads(request.data)
+            captured["timeout"] = timeout
+            return Response()
+
+        result = send_cloudflare_email(
+            "operator@example.com",
+            "ROC report",
+            "Plain report",
+            "<p>HTML report</p>",
+            environ={"CLOUDFLARE_ACCOUNT_ID": "account123", "CLOUDFLARE_API_TOKEN": "secret-token-value"},
+            opener=opener,
+        )
+        self.assertEqual(captured["payload"]["from"], {"address": SENDER_ADDRESS, "name": "N0JCG Radio Operations Center"})
+        self.assertEqual(captured["payload"]["to"], "operator@example.com")
+        self.assertIn("text", captured["payload"])
+        self.assertIn("html", captured["payload"])
+        self.assertNotIn("secret-token-value", json.dumps(captured["payload"]))
+        self.assertEqual(result["delivered"], 1)
+
+    def test_admin_report_api_requires_operator_session_and_csrf(self) -> None:
+        password = "operator report password"
+        self.server.operator_auth = OperatorAuth(
+            make_password_record(password, salt=b"0123456789abcdef", iterations=1000),
+            "ef" * 32,
+        )
+        self.server.login_failures.clear()
+        try:
+            with self.assertRaises(HTTPError) as unauthenticated:
+                self.get("/api/admin-report/settings")
+            self.assertEqual(unauthenticated.exception.code, 401)
+            unauthenticated.exception.close()
+
+            login_request = Request(
+                self.base_url + "/api/operator/login",
+                data=json.dumps({"password": password}).encode("utf-8"),
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with urlopen(login_request, timeout=5) as response:
+                login = json.loads(response.read())
+                cookie = response.headers["Set-Cookie"].split(";", 1)[0]
+            settings_request = Request(
+                self.base_url + "/api/admin-report/settings",
+                data=json.dumps({"enabled": True, "recipient": "admin@example.com", "interval_hours": 6}).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "Cookie": cookie,
+                    "X-CSRF-Token": login["csrf_token"],
+                },
+            )
+            with urlopen(settings_request, timeout=5) as response:
+                payload = json.loads(response.read())
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["sender"], "ROC@n0jcg.com")
+            self.assertEqual(payload["recipient"], "admin@example.com")
+            self.assertNotIn("CLOUDFLARE_API_TOKEN", json.dumps(payload))
+
+            send_request = Request(
+                self.base_url + "/api/admin-report/send-now",
+                data=b"{}",
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "Cookie": cookie,
+                    "X-CSRF-Token": login["csrf_token"],
+                },
+            )
+            with urlopen(send_request, timeout=5) as response:
+                queued = json.loads(response.read())
+            self.assertTrue(queued["ok"])
+            self.assertTrue(self.admin_report_trigger_path.is_file())
+            self.admin_report_trigger_path.unlink()
+        finally:
+            self.server.operator_auth = OperatorAuth()
+            self.server.login_failures.clear()
 
     def test_linbpq_links_table_detects_active_rf_session(self) -> None:
         idle = "<h2 align=center>Links</h2><table><tr><th>Far Call</th><th>Our Call</th></tr></body></html>"
@@ -435,6 +612,89 @@ class ServerTests(unittest.TestCase):
             with patch("n0jcg_roc.server.probe_rf_session", return_value={"available": True, "active": False}), patch("n0jcg_roc.server.request_helper", return_value={"ok": True, "action": "cms_test", "message": "CMS test passed"}):
                 with urlopen(action_request, timeout=5) as action_response:
                     self.assertTrue(json.loads(action_response.read())["ok"])
+
+            wifi_scan_request = Request(
+                self.base_url + "/api/operator/action",
+                data=b'{"action":"wifi_scan"}',
+                method="POST",
+                headers={"Content-Type": "application/json", "Cookie": cookie, "X-CSRF-Token": login_payload["csrf_token"]},
+            )
+            wifi_scan_result = {
+                "ok": True,
+                "action": "wifi_scan",
+                "networks": [{"ssid": "N0JCG-WES", "secured": True, "signal_dbm": -42.0}],
+                "current": {"ssid": "GWYNN-C", "address": "192.168.68.145/24", "signal_dbm": -50.0},
+            }
+            with patch("n0jcg_roc.server.request_helper", return_value=wifi_scan_result) as helper:
+                with urlopen(wifi_scan_request, timeout=5) as wifi_scan_response:
+                    self.assertEqual(json.loads(wifi_scan_response.read())["networks"][0]["ssid"], "N0JCG-WES")
+                helper.assert_called_once_with("wifi_scan", self.server.operator_socket_path, 35.0, None)
+
+            wifi_connect_request = Request(
+                self.base_url + "/api/operator/action",
+                data=json.dumps({"action": "wifi_connect", "ssid": "N0JCG-WES", "password": "password123"}).encode("utf-8"),
+                method="POST",
+                headers={"Content-Type": "application/json", "Cookie": cookie, "X-CSRF-Token": login_payload["csrf_token"]},
+            )
+            with patch("n0jcg_roc.server.request_helper", return_value={"ok": True, "action": "wifi_connect", "message": "Connected Wi-Fi to N0JCG-WES"}) as helper:
+                with urlopen(wifi_connect_request, timeout=5) as wifi_connect_response:
+                    self.assertTrue(json.loads(wifi_connect_response.read())["ok"])
+                helper.assert_called_once_with(
+                    "wifi_connect",
+                    self.server.operator_socket_path,
+                    80.0,
+                    {"ssid": "N0JCG-WES", "password": "password123"},
+                )
+
+            ethernet_status_request = Request(
+                self.base_url + "/api/operator/action",
+                data=b'{"action":"ethernet_status"}',
+                method="POST",
+                headers={"Content-Type": "application/json", "Cookie": cookie, "X-CSRF-Token": login_payload["csrf_token"]},
+            )
+            ethernet_status = {
+                "ok": True,
+                "action": "ethernet_status",
+                "ethernet": {"interface": "enx001122334455", "address_cidr": "192.168.68.114/24", "gateway": "192.168.68.1", "dns": "1.1.1.1", "pending": False},
+            }
+            with patch("n0jcg_roc.server.request_helper", return_value=ethernet_status) as helper:
+                with urlopen(ethernet_status_request, timeout=5) as ethernet_status_response:
+                    self.assertEqual(json.loads(ethernet_status_response.read())["ethernet"]["address_cidr"], "192.168.68.114/24")
+                helper.assert_called_once_with("ethernet_status", self.server.operator_socket_path, 35.0, None)
+
+            ethernet_set_payload = {
+                "action": "ethernet_set",
+                "interface": "enx001122334455",
+                "address_cidr": "192.168.68.120/24",
+                "gateway": "192.168.68.1",
+                "dns": "1.1.1.1,8.8.8.8",
+            }
+            ethernet_set_request = Request(
+                self.base_url + "/api/operator/action",
+                data=json.dumps(ethernet_set_payload).encode("utf-8"),
+                method="POST",
+                headers={"Content-Type": "application/json", "Cookie": cookie, "X-CSRF-Token": login_payload["csrf_token"]},
+            )
+            with patch("n0jcg_roc.server.request_helper", return_value={"ok": True, "action": "ethernet_set"}) as helper:
+                with urlopen(ethernet_set_request, timeout=5) as ethernet_set_response:
+                    self.assertTrue(json.loads(ethernet_set_response.read())["ok"])
+                helper.assert_called_once_with(
+                    "ethernet_set",
+                    self.server.operator_socket_path,
+                    70.0,
+                    {key: ethernet_set_payload[key] for key in ("interface", "address_cidr", "gateway", "dns")},
+                )
+
+            ethernet_confirm_request = Request(
+                self.base_url + "/api/operator/action",
+                data=b'{"action":"ethernet_confirm"}',
+                method="POST",
+                headers={"Content-Type": "application/json", "Cookie": cookie, "X-CSRF-Token": login_payload["csrf_token"]},
+            )
+            with patch("n0jcg_roc.server.request_helper", return_value={"ok": True, "action": "ethernet_confirm"}) as helper:
+                with urlopen(ethernet_confirm_request, timeout=5) as ethernet_confirm_response:
+                    self.assertTrue(json.loads(ethernet_confirm_response.read())["ok"])
+                helper.assert_called_once_with("ethernet_confirm", self.server.operator_socket_path, 35.0, None)
 
             with patch("n0jcg_roc.server.probe_rf_session", return_value={"available": True, "active": True}):
                 with self.assertRaises(HTTPError) as active_session:
@@ -511,8 +771,16 @@ class ServerTests(unittest.TestCase):
         self.assertIn(b'id="metric-voice-calls"', body)
         self.assertIn(b'id="metric-vhf-locks"', body)
         self.assertIn(b'id="metric-uhf-locks"', body)
+        self.assertIn(b'id="chart-vhfLocks"', body)
+        self.assertIn(b'id="chart-uhfLocks"', body)
+        readiness = body[body.index(b'id="system-readiness"'):body.index(b'id="workspace-aprs"')]
+        self.assertNotIn(b'id="metric-vhf-locks"', readiness)
+        self.assertNotIn(b'id="metric-uhf-locks"', readiness)
         self.assertIn(b'id="application-settings"', body)
         self.assertIn(b'id="station-settings-form"', body)
+        self.assertIn(b'id="admin-report-settings-form"', body)
+        self.assertIn(b'id="admin-report-send-now"', body)
+        self.assertIn(b'value="ROC@n0jcg.com" readonly', body)
         self.assertIn(b'id="aprs-activity"', body)
         self.assertIn(b'id="aprs-map"', body)
         self.assertIn(b'id="winlink-gateway"', body)
@@ -586,9 +854,11 @@ class ServerTests(unittest.TestCase):
         self.assertIn(b"initWorkspaceNavigation", app)
         self.assertIn(b"showWorkspacePanel", app)
         self.assertIn(b"aprsMap.invalidateSize()", app)
-        self.assertIn(b"recordOverviewTelemetry", app)
+        self.assertIn(b"refreshTelemetryHistory", app)
         self.assertIn(b"refreshOverviewTelemetry", app)
-        self.assertIn(b"TELEMETRY_WINDOW_MS", app)
+        self.assertIn(b'/api/telemetry', app)
+        self.assertIn(b'/api/telemetry/reset', app)
+        self.assertIn(b'id="telemetry-reset"', body)
         self.assertIn(b"showWinlink", app)
         self.assertIn(b"showRmsSummary", app)
         self.assertIn(b"rmsGatewayOnAir", app)
@@ -602,6 +872,18 @@ class ServerTests(unittest.TestCase):
         self.assertIn(b'/api/license/activate', app)
         self.assertIn(b'/api/license/trial/reset', app)
         self.assertIn(b'/api/operator/action', app)
+        self.assertIn(b'id="wifi-settings-form"', body)
+        self.assertIn(b'id="wifi-scan"', body)
+        self.assertIn(b'"wifi_scan"', app)
+        self.assertIn(b'"wifi_connect"', app)
+        self.assertIn(b'id="ethernet-settings-form"', body)
+        self.assertIn(b'id="ethernet-load"', body)
+        self.assertIn(b'id="ethernet-confirm"', body)
+        self.assertIn(b'"ethernet_status"', app)
+        self.assertIn(b'"ethernet_set"', app)
+        self.assertIn(b'"ethernet_confirm"', app)
+        self.assertIn(b'/api/admin-report/settings', app)
+        self.assertIn(b'/api/admin-report/send-now', app)
         self.assertIn(b'Winlink RMS on air', app)
         self.assertIn(b'function formatFrequency(frequencyHz)', app)
         self.assertIn(b"aprs-symbols-48-${kind}.png", app)
@@ -705,6 +987,17 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(activity["frame_count"], 3)
         self.assertEqual(activity["callsigns"], ["N0JCG-1", "N0JCG-7"])
 
+    def test_aprs_map_preserves_latest_roc_heard_evidence(self) -> None:
+        activity = _heard_activity_from_journal([
+            json.dumps({"MESSAGE": "[0.3] W8ING-9>APRS:first", "__REALTIME_TIMESTAMP": "1786476073000000"}),
+            json.dumps({"MESSAGE": "not a frame", "__REALTIME_TIMESTAMP": "1786476074000000"}),
+            json.dumps({"MESSAGE": "[0.2] W8ING-9>APRS:latest", "__REALTIME_TIMESTAMP": "1786476075000000"}),
+        ])
+        self.assertEqual(activity["frame_count"], 2)
+        self.assertEqual(activity["callsigns"], ["W8ING-9"])
+        self.assertEqual(activity["latest_by_callsign"]["W8ING-9"]["heard_frame"], "[0.2] W8ING-9>APRS:latest")
+        self.assertEqual(activity["latest_by_callsign"]["W8ING-9"]["heard_utc"], "2026-08-11T19:21:15Z")
+
     def test_aprs_map_rejects_positions_older_than_window(self) -> None:
         station = _station_entry({
             "name": "OLD-1",
@@ -756,11 +1049,17 @@ class ServerTests(unittest.TestCase):
         self.assertIn("last_packet_timestamp_utc", payload)
 
     def test_aprs_frame_page_is_paginated_and_sorted(self) -> None:
-        status, media_type, body = self.get("/api/aprs/frames?page=1&sort=newest")
+        records = [
+            {"frame": "N0JCG>APRS:frame one", "origin": "rf", "timestamp_utc": "2026-08-11T00:00:00Z"},
+            {"frame": "N0JCG-1>APRS:frame two", "origin": "rf", "timestamp_utc": "2026-08-11T00:01:00Z"},
+        ]
+        with patch("n0jcg_roc.server.collect_aprs_frame_records", return_value=records):
+            status, media_type, body = self.get("/api/aprs/frames?page=1&sort=newest")
         payload = json.loads(body)
         self.assertEqual(status, 200)
         self.assertEqual(media_type, "application/json")
         self.assertEqual(payload["page_size"], 25)
+        self.assertEqual(payload["frames"][0]["frame"], "N0JCG-1>APRS:frame two")
         self.assertIn("frames", payload)
         self.assertIn("timestamp_utc", payload["frames"][0]) if payload["frames"] else None
         self.assertIn("origin", payload["frames"][0]) if payload["frames"] else None
@@ -842,6 +1141,16 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(parsed["last_session"]["messages_received"], 1)
         self.assertEqual(parsed["last_session"]["timestamp_utc"], "2026-08-11T00:44:12Z")
         self.assertTrue(all(parsed["commissioning"].values()))
+
+    def test_winlink_journal_parser_records_kiss_client_sessions(self) -> None:
+        lines = [
+            "2026-08-17T16:29:53-06:00 roc LINBPQ[1]: KISS Session Stats Port 2 N0JCG-3 N0JCG-10 33 secs Bytes Sent 873 BPM 1587.27 Bytes Received 84 152.73 BPM",
+        ]
+        parsed = parse_linbpq_journal(lines)
+        self.assertEqual(parsed["session_count"], 1)
+        self.assertEqual(parsed["last_session"]["caller"], "N0JCG-3")
+        self.assertEqual(parsed["last_session"]["bytes_sent"], 873)
+        self.assertTrue(parsed["last_session"]["successful"])
 
     def test_winlink_session_ledger_deduplicates_and_summarizes_24_hours(self) -> None:
         sessions = [
@@ -927,14 +1236,23 @@ class ServerTests(unittest.TestCase):
             ],
             "piezoRain": [{"id": "0x0E", "val": "0.10 in/Hr"}, {"id": "0x10", "val": "0.25 in"}],
             "wh25": [{"intemp": "77.0", "unit": "F", "inhumi": "30%", "rel": "24.00 inHg", "abs": "23.70 inHg"}],
+            "lightning": [{"distance": "12.4 mi", "timestamp": "08/14/2026 06:30:00", "count": "3", "battery": "5"}],
         }
-        payload = normalize_gateway_live_data(live, gateway_url="http://192.168.68.131")
+        payload = normalize_gateway_live_data(
+            live,
+            gateway_url="http://192.168.68.131",
+            sensor_inventory=[{"img": "wh57", "name": "Lightning", "id": "E771", "batt": "5", "rssi": "-48"}],
+        )
         self.assertTrue(payload["outdoor_sensor_detected"])
         self.assertAlmostEqual(payload["temperature_c"], 20.0)
         self.assertAlmostEqual(payload["wind_speed_mps"], 4.4704)
         self.assertAlmostEqual(payload["rain_today_mm"], 6.35)
         self.assertAlmostEqual(payload["pressure_hpa"], 812.73328, places=4)
         self.assertAlmostEqual(payload["pressure_absolute_hpa"], 802.574114, places=4)
+        self.assertTrue(payload["lightning_sensor_detected"])
+        self.assertEqual(payload["lightning_count"], 3)
+        self.assertEqual(payload["lightning_distance"], "12.4 mi")
+        self.assertEqual(payload["lightning_signal_dbm"], -48)
 
     def test_weather_dashboard_shows_relative_and_absolute_pressure(self) -> None:
         status, media_type, body = self.get("/")
@@ -942,11 +1260,15 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(media_type, "text/html")
         self.assertIn(b'id="weather-pressure"', body)
         self.assertIn(b'id="weather-pressure-detail"', body)
+        self.assertIn(b'id="weather-lightning"', body)
+        self.assertIn(b'id="weather-lightning-detail"', body)
         app_status, _, app = self.get("/app.js")
         self.assertEqual(app_status, 200)
         self.assertIn(b"pressure_absolute_hpa", app)
         self.assertIn(b"Relative", app)
         self.assertIn(b"Absolute", app)
+        self.assertIn(b"lightning_sensor_detected", app)
+        self.assertIn(b"lightning_count", app)
 
     def test_aprs_frame_parser_ignores_listener_noise(self) -> None:
         frames = parse_aprs_frames([

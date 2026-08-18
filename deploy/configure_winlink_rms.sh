@@ -65,6 +65,30 @@ for reserved_call in "${WINLINK_BASE_CALL}-1" "${WINLINK_BASE_CALL}-2" "${WINLIN
   done
 done
 
+VARA_FM_ENABLED="${VARA_FM_ENABLED:-0}"
+VARA_FM_COMMAND_PORT="${VARA_FM_COMMAND_PORT:-8300}"
+VARA_FM_DATA_PORT="${VARA_FM_DATA_PORT:-8301}"
+VARA_FM_MODE="${VARA_FM_MODE:-FM1200}"
+VARA_FM_REPORT_MODE="VARA${VARA_FM_MODE}"
+[[ "${VARA_FM_ENABLED}" == "0" || "${VARA_FM_ENABLED}" == "1" ]] || {
+  echo "VARA_FM_ENABLED must be 0 or 1" >&2
+  exit 1
+}
+if [[ "${VARA_FM_ENABLED}" == "1" ]]; then
+  [[ -n "${VARA_FM_EXE:-}" && -f "${VARA_FM_EXE}" ]] || {
+    echo "VARA_FM_EXE must point to an installed VARA FM executable" >&2
+    exit 1
+  }
+  [[ "${VARA_FM_CALL:-}" =~ ^[A-Z0-9]{3,6}-[0-9]{1,2}$ ]] || {
+    echo "VARA_FM_CALL must be a gateway callsign with SSID" >&2
+    exit 1
+  }
+  [[ "${VARA_FM_MODE}" == "FM1200" || "${VARA_FM_MODE}" == "FM9600" ]] || {
+    echo "VARA_FM_MODE must be FM1200 or FM9600" >&2
+    exit 1
+  }
+fi
+
 install -d -m 0750 -o root -g n0jcg /etc/n0jcg
 install -d -m 0750 -o n0jcg -g n0jcg /var/lib/n0jcg-winlink
 
@@ -82,6 +106,25 @@ if [[ "${WINLINK_POST_OFFICE_ENABLED}" == "1" ]]; then
   post_office_telnet_line="RELAYAPPL=BBS"
   post_office_application="APPLICATION 2,BBS,,${WINLINK_POST_OFFICE_CALL}"
   post_office_start="LINMAIL"
+fi
+
+vara_port=""
+if [[ "${VARA_FM_ENABLED}" == "1" ]]; then
+  vara_port="
+PORT
+ PORTNUM=3
+ INTERLOCK=1
+ ID=VARA FM
+ DRIVER=VARA
+ PORTCALL=${VARA_FM_CALL}
+ SESSIONTIMELIMIT=30
+ CONFIG
+  ADDR 127.0.0.1 ${VARA_FM_COMMAND_PORT}
+  ${VARA_FM_MODE}
+  WL2KREPORT PUBLIC, api.winlink.org, 80, ${VARA_FM_CALL}, ${WINLINK_LOCATOR}, ${WINLINK_SERVICE_HOURS}, ${WINLINK_FREQUENCY_HZ}, ${VARA_FM_REPORT_MODE}, ${WINLINK_POWER_W}, ${WINLINK_ANTENNA_HEIGHT_FT}, ${WINLINK_ANTENNA_GAIN_DBI}, ${WINLINK_ANTENNA_DIRECTION_DEG}
+  ****
+ ENDPORT
+"
 fi
 
 umask 077
@@ -114,6 +157,18 @@ INFOMSG:
 N0JCG Radio Operations Center - Cripple Creek, Colorado
 ***
 
+IDMSG:
+${WINLINK_GATEWAY_CALL} Winlink RMS Packet Gateway
+${WINLINK_LOCATOR} - ${WINLINK_FREQUENCY_HZ} Hz
+***
+IDINTERVAL=10
+
+BTEXT:
+${WINLINK_GATEWAY_CALL} RMS Packet Gateway
+${WINLINK_FREQUENCY_HZ} Hz - ${WINLINK_LOCATOR}
+***
+BTINTERVAL=30
+
 PORT
  ID=CMS and management
  DRIVER=TELNET
@@ -139,6 +194,7 @@ PORT
  IPADDR=127.0.0.1
  TCPPORT=8010
  CHANNEL=A
+ BCALL=${WINLINK_GATEWAY_CALL}
  FRACK=10000
  RESPTIME=3000
  RETRIES=10
@@ -149,6 +205,8 @@ PORT
  PERSIST=64
  WL2KREPORT PUBLIC, api.winlink.org, 80, ${WINLINK_GATEWAY_CALL}, ${WINLINK_LOCATOR}, ${WINLINK_SERVICE_HOURS}, ${WINLINK_FREQUENCY_HZ}, PKT1200, ${WINLINK_POWER_W}, ${WINLINK_ANTENNA_HEIGHT_FT}, ${WINLINK_ANTENNA_GAIN_DBI}, ${WINLINK_ANTENNA_DIRECTION_DEG}
 ENDPORT
+
+${vara_port}
 
 APPLICATION 1,RMS,C 1 CMS,${WINLINK_GATEWAY_CALL},N0RMS,255
 ${post_office_application}

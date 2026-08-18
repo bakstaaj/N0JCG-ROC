@@ -5,14 +5,16 @@ station monitoring. Its browser dashboard brings APRS, Winlink RMS Packet,
 local weather, system health, and links to independently deployed N0JCG
 applications into one operator view.
 
-Version **0.1.1** is the current packaged release. It includes:
+Version **0.1.2** is the current packaged release. It includes:
 
 - an RTL-SDR APRS receiver and receive-only APRS-IS iGate path;
 - APRS frame history, station symbols, and an optional aprs.fi activity map;
 - a 1200-baud Winlink RMS Packet gateway with LinBPQ/Dire Wolf integration;
+- an optional VARA FM Winlink channel under Wine, interlocked with Packet;
 - a LAN Winlink Post Office for Winlink Express;
 - Ecowitt GW1100/WS90 weather monitoring;
 - authenticated, audited operator controls without browser RF-test controls;
+- configurable periodic operator reports sent from `ROC@n0jcg.com`;
 - independent application links and read-only health summaries for N0JCG Air
   Traffic Center and N0JCG Scanner;
 - five-minute evaluation operation and Gateway license activation; and
@@ -22,7 +24,9 @@ Version **0.1.1** is the current packaged release. It includes:
 
 - [End User Guide](docs/N0JCG_Gateway_End_User_Guide_v0.1.1.md)
 - [Winlink RMS commissioning](docs/WINLINK_RMS_COMMISSIONING.md)
+- [VARA FM commissioning](docs/VARA_FM_COMMISSIONING.md)
 - [Protected operator controls](docs/OPERATOR_CONTROLS.md)
+- [Operator operations reports](docs/ADMIN_REPORTS.md)
 - [APRS receive-only setup](docs/APRS_RECEIVE_ONLY.md)
 - [Development and deployment playbook](DEVELOPMENT_DEPLOYMENT_PLAYBOOK.md)
 
@@ -53,6 +57,26 @@ cd /home/n0jcg/sdrdev/N0JCG-ROC
 The dashboard is then available at `http://ROC_IP/`. Configuration containing
 credentials belongs under `/etc/n0jcg/`; mutable application state belongs
 under `/var/lib/n0jcg-roc/`. Neither location is part of the release archive.
+
+## Interactive Wi-Fi setup
+
+On an installed ROC, scan visible networks without changing configuration:
+
+```bash
+cd /home/n0jcg/sdrdev/N0JCG-ROC
+sudo tools/configure_wifi.sh --scan-only
+```
+
+To select an SSID by number and configure it through Netplan:
+
+```bash
+sudo tools/configure_wifi.sh
+```
+
+The utility removes duplicate SSIDs, hides and confirms the password, validates
+the staged Netplan configuration, keeps Wi-Fi at route metric 600, creates a
+timestamped backup under `/var/backups/`, and automatically restores that
+backup if the selected Wi-Fi network cannot be confirmed.
 
 ## Independent operational applications
 

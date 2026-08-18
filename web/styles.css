@@ -113,6 +113,16 @@ button, select { font: inherit; }
 .frame-readout strong, .metric-link { color: var(--n0-color-blue); font: 600 .92rem/1.5 var(--n0-font-mono); font-variant-numeric: tabular-nums; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .frame-readout small { margin-top: 6px; color: var(--n0-color-text-muted); font-size: .78rem; }
 .metric-link { text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.aprs-digi-survey { margin-top: 16px; padding: 16px; border: 1px solid var(--n0-color-border); border-radius: 6px; background: var(--n0-color-white); }
+.aprs-digi-survey h3 { margin: 2px 0 0; color: var(--n0-color-navy); font-size: 1.05rem; }
+.aprs-digi-survey-message { margin: 0 0 10px; color: var(--n0-color-text-muted); font-size: .78rem; }
+.aprs-digi-survey-list { display: grid; gap: 7px; }
+.aprs-digi-survey-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 9px 11px; background: var(--n0-color-surface-subtle); border: 1px solid var(--n0-color-border); border-radius: 5px; }
+.aprs-digi-survey-row strong { color: var(--n0-color-blue); font: 700 .82rem var(--n0-font-mono); }
+.aprs-digi-survey-row span { color: var(--n0-color-text-muted); font-size: .72rem; text-align: right; }
+[data-pipeline-state="healthy"] { color: var(--n0-color-blue); }
+[data-pipeline-state="degraded"] { color: #a15c00; }
+[data-pipeline-state="fault"] { color: #b42318; }
 
 .service-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .overview-section { padding-top: 2px; }
@@ -124,6 +134,9 @@ button, select { font: inherit; }
 .telemetry-card > small { display: block; margin-top: 7px; color: var(--n0-color-text-muted); font-size: .7rem; line-height: 1.35; }
 .telemetry-chart { height: 98px; position: relative; margin-top: 12px; overflow: hidden; background: repeating-linear-gradient(to top, transparent 0, transparent 31px, #dfe5eb 32px); border-bottom: 1px solid var(--n0-color-border); }
 .telemetry-chart svg { width: 100%; height: 88px; display: block; overflow: visible; }
+.telemetry-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.telemetry-actions p { margin: 0; }
+.telemetry-actions output { min-width: 12rem; color: var(--n0-color-text-muted); font-size: .75rem; }
 .telemetry-area { fill: rgb(21 101 192 / 12%); }
 .telemetry-line { fill: none; stroke: var(--n0-color-blue); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 .telemetry-scale { position: absolute; inset: 3px 4px auto; display: flex; justify-content: space-between; pointer-events: none; color: var(--n0-color-text-muted); font: .58rem var(--n0-font-mono); }
@@ -203,11 +216,21 @@ button, select { font: inherit; }
 .switch-label input { width: 20px; height: 20px; accent-color: var(--n0-color-blue); }
 .settings-fields { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 12px; margin: 18px 0; }
 .settings-fields label { color: var(--n0-color-text-muted); font-size: .76rem; font-weight: 700; }
-.settings-fields input { width: 100%; min-height: 44px; margin-top: 5px; padding: 8px 10px; border: 1px solid var(--n0-color-border); border-radius: var(--n0-radius-sm); background: var(--n0-color-white); color: var(--n0-color-text); font: .9rem var(--n0-font-mono); }
-.settings-fields input:focus { border-color: var(--n0-color-blue); }
+.settings-fields input, .settings-fields select { width: 100%; min-height: 44px; margin-top: 5px; padding: 8px 10px; border: 1px solid var(--n0-color-border); border-radius: var(--n0-radius-sm); background: var(--n0-color-white); color: var(--n0-color-text); font: .9rem var(--n0-font-mono); }
+.settings-fields input:focus, .settings-fields select:focus { border-color: var(--n0-color-blue); }
 .settings-actions output { color: var(--n0-color-text-muted); font-size: .8rem; overflow-wrap: anywhere; }
 .settings-card--wide { grid-column: 1 / -1; }
 .settings-fields--key { grid-template-columns: minmax(0, 1fr); }
+.admin-report-fields { grid-template-columns: minmax(180px, .8fr) minmax(240px, 1.4fr) minmax(150px, .55fr); }
+.wifi-settings-fields { grid-template-columns: minmax(220px, 1.3fr) minmax(190px, 1fr) minmax(190px, 1fr); }
+.wifi-scan-actions { align-items: center; margin-bottom: 14px; }
+.wifi-scan-actions small { color: var(--n0-color-text-muted); }
+.ethernet-settings-fields { grid-template-columns: minmax(160px, .7fr) minmax(210px, 1.1fr) minmax(180px, .9fr) minmax(220px, 1.2fr); }
+.ethernet-status-actions { align-items: center; margin-bottom: 14px; }
+.ethernet-status-actions small { color: var(--n0-color-text-muted); }
+.settings-fields input[readonly] { background: var(--n0-color-surface-muted); color: var(--n0-color-text-muted); }
+.settings-note { display: block; margin-top: 12px; color: var(--n0-color-text-muted); }
+.settings-button-group { display: flex; flex-wrap: wrap; gap: 10px; }
 .integration-controls { display: flex; align-items: center; gap: 16px; }
 .integration-controls .application-state { margin: 0; }
 
@@ -248,6 +271,7 @@ button, select { font: inherit; }
 .aprs-map-footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 9px; color: var(--n0-color-text-muted); font-size: .74rem; }
 .aprs-map-footer span:last-child { text-align: right; }
 .aprs-marker-label { color: var(--n0-color-navy); font-weight: 700; }
+.aprs-marker-frame { display: block; max-width: 360px; margin: 8px 0; padding: 6px 8px; overflow-wrap: anywhere; background: var(--n0-color-surface-muted); border-radius: var(--n0-radius-sm); font-size: .72rem; white-space: normal; }
 .leaflet-tooltip.aprs-callsign-tooltip { width: max-content; max-width: none; white-space: nowrap; overflow-wrap: normal; word-break: normal; }
 .aprs-symbol-marker { background: transparent; border: 0; }
 .aprs-symbol-stack { position: relative; display: block; width: 40px; height: 40px; filter: drop-shadow(0 1px 2px rgb(10 31 68 / 45%)); }
@@ -327,6 +351,7 @@ button, select { font: inherit; }
   .summary-grid, .service-grid, .weather-grid, .metric-grid, .winlink-grid, .telemetry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .winlink-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .winlink-reliability-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ethernet-settings-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {

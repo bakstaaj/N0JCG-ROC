@@ -1,0 +1,23 @@
+[Unit]
+Description=N0JCG optional VARA FM modem
+After=network-online.target sound.target
+Wants=network-online.target
+ConditionPathExists=/etc/n0jcg/winlink-rms.env
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+SupplementaryGroups=audio dialout
+EnvironmentFile=/etc/n0jcg/winlink-rms.env
+ExecStart=/usr/local/libexec/n0jcg/run-vara-fm.sh
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/n0jcg-vara-fm
+
+[Install]
+WantedBy=multi-user.target

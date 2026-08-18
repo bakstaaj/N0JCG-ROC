@@ -1,0 +1,23 @@
+[Unit]
+Description=N0JCG ROC APRS-IS telemetry publisher (Internet only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
+EnvironmentFile=-/etc/n0jcg/aprs-igate.env
+Environment=APRS_TELEMETRY_ENABLED=0
+Environment=APRS_TELEMETRY_INTERVAL_SECONDS=1800
+Environment=ROC_API_BASE=http://127.0.0.1
+ExecStart=/usr/bin/python3 /home/n0jcg/sdrdev/N0JCG-ROC/tools/aprs_telemetry_publisher.py
+Restart=always
+RestartSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ExecCondition=/bin/sh -c 'test "${APRS_TELEMETRY_ENABLED}" = "1"'
+
+[Install]
+WantedBy=multi-user.target

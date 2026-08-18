@@ -1,0 +1,27 @@
+[Unit]
+Description=N0JCG ROC periodic operator operations report
+After=network-online.target n0jcg-roc.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
+Environment=PYTHONPATH=/home/n0jcg/sdrdev/N0JCG-ROC/src
+Environment=ROC_ADMIN_REPORT_SETTINGS=/var/lib/n0jcg-roc/admin-report.json
+Environment=ROC_ADMIN_REPORT_STATE=/var/lib/n0jcg-roc/admin-report-state.json
+Environment=ROC_ADMIN_REPORT_TRIGGER=/var/lib/n0jcg-roc/admin-report-send-now.json
+Environment=ROC_APPLICATION_SETTINGS=/var/lib/n0jcg-roc/applications.json
+EnvironmentFile=-/etc/n0jcg/admin-report.env
+StateDirectory=n0jcg-roc
+ExecStart=/usr/bin/python3 -m n0jcg_roc.admin_report
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target

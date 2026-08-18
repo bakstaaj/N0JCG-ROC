@@ -17,9 +17,8 @@ igate_beacon_interval="${APRS_IGATE_BEACON_INTERVAL:-720:00}"
 igate_beacon_comment="${APRS_IGATE_BEACON_COMMENT:-N0JCG ROC RX-only iGate 144.390 MHz}"
 # Use the nominal APRS channel and enable the RTL FM demodulator's DC blocker.
 # Offset tuning is not supported reliably by this tuner and only adds a warning.
-# With the 48 kHz output mode this rtl_fm build lands 252 kHz above the
-# requested frequency. Request 144.138 MHz for the coordinated 144.390 MHz
-# APRS carrier, and verify the startup log after hardware changes.
+# This rtl_fm build reports an internal +252 kHz tuning offset in this 48 kHz
+# DC-blocker mode. Request 144.138 MHz so the effective APRS channel is 144.390.
 rtl_frequency_hz="${APRS_RTL_FREQUENCY_HZ:-144138000}"
 mkdir -p "${runtime_dir}"
 direwolf_config="${runtime_dir}/direwolf.conf"
@@ -56,7 +55,7 @@ def coordinate(value, *, latitude):
 print(coordinate(station["latitude"], latitude=True), coordinate(station["longitude"], latitude=False))
 PY
 )
-    printf 'PBEACON SENDTO=IG DELAY=0:30 EVERY=%s SYMBOL="igate" LAT=%s LONG=%s COMMENT="%s"\n' \
+    printf 'PBEACON SENDTO=IG DELAY=0:30 EVERY=%s SYMBOL="igate" OVERLAY=R LAT=%s LONG=%s COMMENT="%s"\n' \
       "${igate_beacon_interval}" "${beacon_latitude}" "${beacon_longitude}" "${igate_beacon_comment}" \
       >>"${direwolf_config}"
   fi

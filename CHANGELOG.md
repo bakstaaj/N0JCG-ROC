@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.2 - 2026-08-18
+
+Operational release for APRS observability and passive coverage planning.
+
+### APRS
+
+- Added the receive-only digipeater survey to the dashboard and
+  `/api/aprs/digipeaters`.
+- Added guidance that distinguishes heard digipeater hops from proof of
+  digipeater reachability or authorization.
+- Added a focused `deploy/install_aprs_digipeater_survey.sh` preflight and
+  deployment script.
+
 ## 0.1.1 - 2026-08-11
 
 Patch release for the commissioned Winlink RMS gateway.

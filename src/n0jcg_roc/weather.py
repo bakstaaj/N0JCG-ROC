@@ -80,6 +80,15 @@ def normalize_gateway_live_data(
     rain = _item_map(payload.get("piezoRain") or payload.get("rain"))
     indoor = payload.get("wh25") or []
     indoor = indoor[0] if isinstance(indoor, list) and indoor and isinstance(indoor[0], dict) else {}
+    lightning = payload.get("lightning") or []
+    lightning = lightning[0] if isinstance(lightning, list) and lightning and isinstance(lightning[0], dict) else {}
+    inventory = sensor_inventory or []
+    lightning_sensor = next((
+        item for item in inventory
+        if isinstance(item, dict)
+        and (str(item.get("img", "")).lower() == "wh57" or str(item.get("name", "")).lower() == "lightning")
+        and str(item.get("id", "")).upper() not in {"", "FFFFFFFF", "FFFFFFFE"}
+    ), None)
 
     def common_value(item_id: str) -> Any:
         item = common.get(item_id)
@@ -100,7 +109,8 @@ def normalize_gateway_live_data(
         "location": "N0JCG ROC",
         "gateway_url": gateway_url,
         "outdoor_sensor_detected": outdoor_available,
-        "sensor_inventory": sensor_inventory or [],
+        "lightning_sensor_detected": lightning_sensor is not None,
+        "sensor_inventory": inventory,
         "temperature_c": _temperature_c(outdoor_temp_value, str(outdoor_temp_unit)),
         "humidity_percent": _number(common_value("0x07")),
         "pressure_hpa": _pressure_hpa(indoor.get("rel")),
@@ -114,6 +124,11 @@ def normalize_gateway_live_data(
         "solar_w_m2": _number(common_value("0x15")),
         "indoor_temperature_c": _temperature_c(indoor.get("intemp"), str(indoor.get("unit", "C"))),
         "indoor_humidity_percent": _number(indoor.get("inhumi")),
+        "lightning_count": _number(lightning.get("count")),
+        "lightning_distance": lightning.get("distance"),
+        "lightning_last_local": lightning.get("timestamp") or lightning.get("date"),
+        "lightning_battery_level": _number(lightning.get("battery") or (lightning_sensor or {}).get("batt")),
+        "lightning_signal_dbm": _number((lightning_sensor or {}).get("rssi")),
     }
 
 
@@ -134,6 +149,11 @@ def normalize_observation(payload: dict[str, Any], *, source: str = "gw1100") ->
         "battery_ok": payload.get("battery_ok"),
         "indoor_temperature_c": payload.get("indoor_temperature_c"),
         "indoor_humidity_percent": payload.get("indoor_humidity_percent"),
+        "lightning_count": payload.get("lightning_count"),
+        "lightning_distance": payload.get("lightning_distance"),
+        "lightning_last_local": payload.get("lightning_last_local"),
+        "lightning_battery_level": payload.get("lightning_battery_level"),
+        "lightning_signal_dbm": payload.get("lightning_signal_dbm"),
     }
     return {
         "source": payload.get("source", source),
@@ -142,6 +162,7 @@ def normalize_observation(payload: dict[str, Any], *, source: str = "gw1100") ->
         "location": payload.get("location", "N0JCG ROC"),
         "gateway_url": payload.get("gateway_url"),
         "outdoor_sensor_detected": bool(payload.get("outdoor_sensor_detected")),
+        "lightning_sensor_detected": bool(payload.get("lightning_sensor_detected")),
         "sensor_inventory": payload.get("sensor_inventory", []),
         "units": {"temperature": "C", "pressure": "hPa", "wind": "m/s", "rain": "mm"},
         "fields": fields,

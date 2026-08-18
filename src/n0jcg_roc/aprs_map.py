@@ -62,6 +62,47 @@ def _heard_activity_from_lines(lines: list[str], limit: int = APRSFI_MAX_CALLSIG
     return {"callsigns": callsigns, "frame_count": frame_count}
 
 
+def _heard_activity_from_journal(lines: list[str], limit: int = APRSFI_MAX_CALLSIGNS) -> dict:
+    records: list[dict] = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+            frame = str(entry.get("MESSAGE") or "").strip()
+            timestamp_epoch = int(entry["__REALTIME_TIMESTAMP"]) / 1_000_000
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError, OSError):
+            continue
+        match = CALLSIGN_PATTERN.match(frame)
+        if not match:
+            continue
+        records.append({
+            "callsign": match.group(1).upper(),
+            "frame": frame,
+            "timestamp_utc": datetime.fromtimestamp(timestamp_epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+
+    callsigns: list[str] = []
+    latest_by_callsign: dict[str, dict] = {}
+    for record in reversed(records):
+        callsign = record["callsign"]
+        if callsign in latest_by_callsign:
+            continue
+        latest_by_callsign[callsign] = {
+            "heard_utc": record["timestamp_utc"],
+            "heard_frame": record["frame"],
+        }
+        if len(callsigns) < limit:
+            callsigns.append(callsign)
+    latest_by_callsign = {
+        callsign: latest_by_callsign[callsign]
+        for callsign in callsigns
+    }
+    return {
+        "callsigns": callsigns,
+        "frame_count": len(records),
+        "latest_by_callsign": latest_by_callsign,
+    }
+
+
 def recent_heard_activity(window_hours: int = APRS_MAP_WINDOW_HOURS) -> dict:
     try:
         result = subprocess.run(
@@ -69,7 +110,7 @@ def recent_heard_activity(window_hours: int = APRS_MAP_WINDOW_HOURS) -> dict:
                 "journalctl",
                 f"--unit={APRS_JOURNAL_UNIT}",
                 f"--since=-{window_hours}h",
-                "--output=cat",
+                "--output=json",
                 "--no-pager",
             ],
             capture_output=True,
@@ -78,10 +119,18 @@ def recent_heard_activity(window_hours: int = APRS_MAP_WINDOW_HOURS) -> dict:
             timeout=5,
         )
     except (OSError, subprocess.SubprocessError):
-        return {"callsigns": [], "frame_count": 0, "source": "systemd-journal-unavailable"}
+        return {"callsigns": [], "frame_count": 0, "latest_by_callsign": {}, "source": "systemd-journal-unavailable"}
     if result.returncode != 0:
-        return {"callsigns": [], "frame_count": 0, "source": "systemd-journal-unavailable"}
-    return {**_heard_activity_from_lines(result.stdout.splitlines()), "source": "systemd-journal"}
+        return {"callsigns": [], "frame_count": 0, "latest_by_callsign": {}, "source": "systemd-journal-unavailable"}
+    return {**_heard_activity_from_journal(result.stdout.splitlines()), "source": "systemd-journal"}
+
+
+def _with_heard_evidence(stations: list[dict], activity: dict) -> list[dict]:
+    latest_by_callsign = activity.get("latest_by_callsign") or {}
+    return [
+        {**station, **latest_by_callsign.get(station.get("callsign"), {})}
+        for station in stations
+    ]
 
 
 def load_aprsfi_settings(path: Path) -> dict:
@@ -209,7 +258,7 @@ def collect_aprs_map(
     if not force_refresh:
         cached = _load_cache(cache_path, callsigns)
         if cached is not None:
-            return {**base, **cached}
+            return {**base, **cached, "stations": _with_heard_evidence(cached.get("stations", []), activity)}
 
     query = urlencode({"name": ",".join(callsigns), "what": "loc", "apikey": api_key, "format": "json"})
     request = Request(
@@ -236,9 +285,15 @@ def collect_aprs_map(
             "cached": False,
         }
         _save_cache(cache_path, cache)
-        return {**base, **cache}
+        return {**base, **cache, "stations": _with_heard_evidence(stations, activity)}
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
         stale = _load_cache(cache_path, callsigns)
         if stale is not None:
-            return {**base, **stale, "stale": True, "error": str(error)}
+            return {
+                **base,
+                **stale,
+                "stations": _with_heard_evidence(stale.get("stations", []), activity),
+                "stale": True,
+                "error": str(error),
+            }
         return {**base, "error": str(error), "message": "aprs.fi position lookup is currently unavailable."}

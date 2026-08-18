@@ -20,3 +20,5 @@ ax25-apps
 ax25-tools
 direwolf
 libax25
+wine
+xvfb

@@ -23,6 +23,10 @@ BPQ_MESSAGE_RECORD_SIZE = 308
 BPQ_MESSAGE_STATUS_OFFSET = 1
 BPQ_MESSAGE_FLAGS_OFFSET = 154
 BPQ_MESSAGE_SOURCE_FLAGS = 4 | 8 | 16 | 32 | 64
+KISS_SESSION_PATTERN = re.compile(
+    r"^KISS Session Stats Port \d+ (?P<caller>\S+) (?P<gateway>\S+) "
+    r"(?P<duration>\d+) secs Bytes Sent (?P<sent>\d+) .*? Bytes Received (?P<received>\d+) "
+)
 
 
 def summarize_mail_index(path: Path = MESSAGE_INDEX_PATH) -> dict:
@@ -123,6 +127,27 @@ def parse_linbpq_journal(lines: list[str]) -> dict:
             continue
         timestamp_utc = _utc_iso(match.group("timestamp"))
         message = match.group("message")
+        kiss = KISS_SESSION_PATTERN.match(message)
+        if kiss and timestamp_utc:
+            sent = int(kiss.group("sent"))
+            received = int(kiss.group("received"))
+            sessions.append({
+                "timestamp_utc": timestamp_utc,
+                "caller": kiss.group("caller"),
+                "gateway": kiss.group("gateway"),
+                "mode": "Packet 1200",
+                "frequency_hz": 0,
+                "duration_seconds": int(kiss.group("duration")),
+                "messages_sent": 0,
+                "messages_received": 0,
+                "bytes_sent": sent,
+                "bytes_received": received,
+                "successful": bool(sent or received),
+                "source": "linbpq-kiss-session",
+            })
+            commissioning["rf_path_verified"] = True
+            commissioning["cms_authentication_verified"] |= bool(sent or received)
+            continue
         if message == "WL2K Database update ok" and pending_channel_report:
             commissioning["public_channel_report_verified"] = True
             pending_channel_report = False
@@ -334,9 +359,15 @@ def merge_sessions(cached: list[dict], observed: list[dict], limit: int = 500) -
     return sorted(merged.values(), key=lambda item: item["timestamp_utc"])[-limit:]
 
 
-def summarize_sessions(sessions: list[dict], now: datetime | None = None) -> dict:
+def summarize_sessions(
+    sessions: list[dict],
+    now: datetime | None = None,
+    *,
+    window_hours: int = 24,
+) -> dict:
     current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    window_start = current - timedelta(hours=24)
+    window_hours = max(1, min(168, int(window_hours)))
+    window_start = current - timedelta(hours=window_hours)
     recent = []
     for session in sessions:
         try:
@@ -347,9 +378,9 @@ def summarize_sessions(sessions: list[dict], now: datetime | None = None) -> dic
             recent.append((timestamp.astimezone(timezone.utc), session))
     successful = sum(1 for _, session in recent if session.get("successful"))
     durations = [session.get("duration_seconds") for _, session in recent if isinstance(session.get("duration_seconds"), (int, float))]
-    hour_start = current.replace(minute=0, second=0, microsecond=0) - timedelta(hours=23)
+    hour_start = current.replace(minute=0, second=0, microsecond=0) - timedelta(hours=window_hours - 1)
     buckets = []
-    for offset in range(24):
+    for offset in range(window_hours):
         bucket_start = hour_start + timedelta(hours=offset)
         bucket_end = bucket_start + timedelta(hours=1)
         buckets.append({
@@ -357,7 +388,7 @@ def summarize_sessions(sessions: list[dict], now: datetime | None = None) -> dic
             "sessions": sum(1 for timestamp, _ in recent if bucket_start <= timestamp < bucket_end),
         })
     return {
-        "window_hours": 24,
+        "window_hours": window_hours,
         "window_start_utc": window_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sessions": len(recent),
         "successful_sessions": successful,
@@ -392,6 +423,11 @@ def collect_winlink_status(
         "--no-pager", "--quiet", "-o", "short-iso",
     ])
     activity = parse_linbpq_journal(journal.splitlines())
+    # KISS session statistics do not carry the frequency; the active runtime
+    # configuration supplies it so they participate in the same ledger.
+    for session in activity["sessions"]:
+        if not session.get("frequency_hz"):
+            session["frequency_hz"] = runtime.get("frequency_hz") or 0
     reliability = summarize_gateway_reliability(
         journal.splitlines(), modem_journal.splitlines(), rms_service, modem_service,
     )

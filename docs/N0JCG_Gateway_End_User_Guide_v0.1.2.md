@@ -226,6 +226,24 @@ The iGate path is receive-only. Internet identification packets do not key a
 radio. Confirm APRS-IS login verification in the service journal, then confirm
 a locally decoded RF frame before treating the iGate as commissioned.
 
+### Passive digipeater survey
+
+The ROC includes a receive-only digipeater survey at the bottom of the APRS
+activity panel. It reviews the recent RF frame history (72 hours by default)
+and reports packets whose path contains a digipeater hop marked with `*`.
+Common path aliases such as `WIDE`, `TRACE`, `RELAY`, `NCA`, and `SS` are
+ignored, and APRS-IS-only frames are never counted as RF observations.
+
+This is a passive planning tool: it does not transmit, query APRS-IS, or prove
+that a digipeater is currently reachable. A result shows that the ROC heard a
+frame after a digipeater had used it; an empty result means no qualifying hop
+was decoded during the survey window. The displayed distance is the distance
+from the decoded source station to the ROC, not the digipeater's location.
+
+Use the survey before enabling any digipeater function. Coordinate a local
+frequency and path policy first, and treat the survey as supporting evidence
+for coverage planning rather than authorization to transmit.
+
 ## 8. Configure Ecowitt weather
 
 Give the GW1100 a stable LAN address. Copy `config/weather.env.example` to

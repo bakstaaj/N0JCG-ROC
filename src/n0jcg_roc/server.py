@@ -4,11 +4,13 @@ import argparse
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 import mimetypes
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 import re
+import sqlite3
 import subprocess
 import threading
 import time
@@ -16,6 +18,14 @@ from urllib.parse import parse_qs, urlparse
 
 from . import __version__
 from .applications import collect_application_status, save_application_settings
+from .admin_report import (
+    DEFAULT_SETTINGS_PATH as DEFAULT_ADMIN_REPORT_SETTINGS_PATH,
+    DEFAULT_STATE_PATH as DEFAULT_ADMIN_REPORT_STATE_PATH,
+    DEFAULT_TRIGGER_PATH as DEFAULT_ADMIN_REPORT_TRIGGER_PATH,
+    queue_report_now,
+    safe_report_status,
+    save_report_settings,
+)
 from .aprs_map import collect_aprs_map, load_aprsfi_settings, save_aprsfi_settings
 from .config import load_station_config, transmit_interlock
 from .inventory import SERVICES
@@ -32,6 +42,7 @@ from .operator_controls import (
 from .operator_activity import probe_rf_session
 from .system_status import collect_system_status
 from .station_settings import load_station_settings, save_station_settings
+from .telemetry import DEFAULT_TELEMETRY_PATH, read_telemetry, record_telemetry, reset_telemetry
 from .weather import read_weather_status, store_observation
 from .winlink import collect_winlink_session_page, collect_winlink_status
 
@@ -61,6 +72,44 @@ DEFAULT_MAINTENANCE_PATH = Path("/var/lib/n0jcg-roc/winlink-maintenance")
 DEFAULT_LICENSE_STATE_PATH = Path("/var/lib/n0jcg-roc/licensing")
 APRS_RTL_SERIAL = os.environ.get("APRS_RTL_SERIAL", "00014439")
 APRS_FRAME_PATTERN = re.compile(r"^(?:\[[^\]]+\]\s*)?[A-Z0-9][A-Z0-9-]{1,8}>[^:]+:.+$")
+APRS_EXPECTED_FREQUENCY_HZ = int(os.environ.get("APRS_EXPECTED_FREQUENCY_HZ", "144390000"))
+APRS_DIGI_SURVEY_HOURS = int(os.environ.get("APRS_DIGI_SURVEY_HOURS", "72"))
+APRS_PIPELINE_STALE_SECONDS = int(os.environ.get("APRS_PIPELINE_STALE_SECONDS", "180"))
+APRS_RF_QUIET_SECONDS = int(os.environ.get("APRS_RF_QUIET_SECONDS", "21600"))
+APRS_PIPELINE_STATE_PATH = PROJECT_ROOT / "runtime" / "aprs" / "pipeline-health.json"
+
+
+def collect_telemetry_sample(application_settings_path: Path) -> dict:
+    system = collect_system_status()
+    aprs = collect_aprs_status()
+    applications = collect_application_status(application_settings_path).get("applications", [])
+    air_traffic = next((item for item in applications if item.get("id") == "air_traffic"), {})
+    scanner = next((item for item in applications if item.get("id") == "scanner"), {})
+    air_metrics = air_traffic.get("metrics") or {}
+    scanner_metrics = scanner.get("metrics") or {}
+    return {
+        "timestamp": int(time.time() * 1000),
+        "cpu": system.get("resources", {}).get("cpu", {}).get("utilization_percent"),
+        "memory": system.get("resources", {}).get("memory", {}).get("used_percent"),
+        "temperature": system.get("resources", {}).get("temperature", {}).get("celsius"),
+        "aprsFrames": aprs.get("packet_count"),
+        "aircraft": air_metrics.get("aircraft_count") if air_traffic.get("reachable") else None,
+        "voiceCalls": scanner_metrics.get("voice_calls") if scanner.get("reachable") else None,
+        "vhfLocks": scanner_metrics.get("vhf_locks") if scanner.get("reachable") else None,
+        "uhfLocks": scanner_metrics.get("uhf_locks") if scanner.get("reachable") else None,
+    }
+
+
+def run_telemetry_collector(server: "RocServer") -> None:
+    while not server.telemetry_stop.is_set():
+        try:
+            record_telemetry(
+                collect_telemetry_sample(server.application_settings_path),
+                server.telemetry_path,
+            )
+        except (OSError, ValueError, TypeError, sqlite3.Error) as error:
+            print(f"telemetry collection failed: {error}")
+        server.telemetry_stop.wait(30)
 
 
 def parse_aprs_frames(lines: list[str]) -> list[str]:
@@ -134,6 +183,80 @@ def aprs_frame_origin(frame: str) -> str:
     return "internet" if frame.startswith("[ig]") else "rf"
 
 
+def _aprs_receiver_process_active() -> bool:
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            command = (proc / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore")
+        except OSError:
+            continue
+        if "rtl_fm" in command and APRS_RTL_SERIAL in command:
+            return True
+    return False
+
+
+def collect_aprs_pipeline_health(records: list[dict] | None = None) -> dict:
+    """Return a fail-visible health assessment for the APRS RF pipeline.
+
+    A running systemd process is not sufficient: audio-ring freshness and RF
+    decode freshness are evaluated separately.  Internet-only iGate beacons
+    deliberately do not count as RF evidence.
+    """
+    now = time.time()
+    active = _aprs_receiver_process_active()
+    audio_path = APRS_LOG_PATH.parent / "audio-ring.wav"
+    rtl_log_path = APRS_LOG_PATH.parent / "rtl.log"
+    packet_path = APRS_LOG_PATH
+    mtimes = {}
+    for name, path in (("audio", audio_path), ("rtl", rtl_log_path), ("packets", packet_path)):
+        try:
+            mtimes[name] = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except OSError:
+            mtimes[name] = None
+    freshest_path = None
+    freshest_mtime = None
+    for path in (audio_path, packet_path, rtl_log_path):
+        try:
+            value = path.stat().st_mtime
+        except OSError:
+            continue
+        if freshest_mtime is None or value > freshest_mtime:
+            freshest_mtime, freshest_path = value, path
+    pipeline_age_seconds = None if freshest_mtime is None else max(0, int(now - freshest_mtime))
+    rf_records = [item for item in (records or collect_aprs_frame_records(max_lines=500)) if item.get("origin") == "rf"]
+    last_rf = rf_records[-1] if rf_records else None
+    last_rf_epoch = None
+    if last_rf and last_rf.get("timestamp_utc"):
+        try:
+            last_rf_epoch = datetime.fromisoformat(last_rf["timestamp_utc"].replace("Z", "+00:00")).timestamp()
+        except (TypeError, ValueError):
+            pass
+    rf_age_seconds = None if last_rf_epoch is None else max(0, int(now - last_rf_epoch))
+    reasons = []
+    state = "healthy"
+    if not active:
+        state, reasons = "fault", ["RTL receiver process is not running"]
+    elif audio_path.exists() and (pipeline_age_seconds is None or pipeline_age_seconds > APRS_PIPELINE_STALE_SECONDS):
+        state, reasons = "fault", [f"audio pipeline has not advanced for {pipeline_age_seconds or 'an unknown number of'} seconds"]
+    elif rf_age_seconds is None or rf_age_seconds > APRS_RF_QUIET_SECONDS:
+        state = "degraded"
+        reasons = ["RF decode is quiet or stale; receiver process and audio pipeline are still active"]
+    else:
+        reasons = ["receiver process, audio pipeline, and RF decodes are current"]
+    return {
+        "state": state,
+        "active": active,
+        "summary": reasons[0],
+        "reasons": reasons,
+        "checked_at_utc": datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "last_pipeline_activity_utc": None if freshest_mtime is None else datetime.fromtimestamp(freshest_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "pipeline_age_seconds": pipeline_age_seconds,
+        "last_rf_packet_timestamp_utc": last_rf.get("timestamp_utc") if last_rf else None,
+        "rf_age_seconds": rf_age_seconds,
+        "expected_frequency_hz": APRS_EXPECTED_FREQUENCY_HZ,
+        "pipeline_files": mtimes,
+    }
+
+
 def collect_aprs_status() -> dict:
     try:
         lines = APRS_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -142,24 +265,79 @@ def collect_aprs_status() -> dict:
     records = collect_aprs_frame_records(max_lines=500)
     frames = [record["frame"] for record in records]
     all_frames = parse_aprs_frames(lines)
-    active = False
-    for proc in Path("/proc").glob("[0-9]*"):
-        try:
-            command = (proc / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore")
-        except OSError:
-            continue
-        if "rtl_fm" in command and APRS_RTL_SERIAL in command:
-            active = True
-            break
+    active = _aprs_receiver_process_active()
+    pipeline = collect_aprs_pipeline_health(records)
     return {
         "configured": True,
         "active": active,
+        "pipeline": pipeline,
         "packet_count": len(all_frames),
         "last_packet": frames[-1] if frames else None,
         "last_packet_origin": aprs_frame_origin(frames[-1]) if frames else None,
         "last_packet_timestamp_utc": records[-1]["timestamp_utc"] if records else None,
         "packets": frames[-20:],
         "recent": lines[-20:],
+    }
+
+
+def collect_aprs_digipeater_survey(station: dict | None = None) -> dict:
+    """Summarize actual locally heard digipeater hops without transmitting."""
+    cutoff = time.time() - max(1, APRS_DIGI_SURVEY_HOURS) * 3600
+    records = collect_aprs_frame_records(max_lines=5000)
+    station = station or {}
+    origin_lat, origin_lon = station.get("latitude"), station.get("longitude")
+    hop_pattern = re.compile(r"^[A-Z0-9][A-Z0-9-]{1,8}$", re.IGNORECASE)
+    position_pattern = re.compile(r"[!=/@](\d{2})(\d{2}\.\d{2})([NS])[/\\](\d{3})(\d{2}\.\d{2})([EW])")
+    ignored_prefixes = ("WIDE", "TRACE", "RELAY", "NCA", "SS")
+    observed: dict[str, dict] = {}
+    for record in records:
+        if record.get("origin") != "rf":
+            continue
+        timestamp = record.get("timestamp_utc")
+        try:
+            epoch = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).timestamp()
+        except (TypeError, ValueError):
+            continue
+        if epoch < cutoff:
+            continue
+        frame = str(record.get("frame") or "")
+        match = re.match(r"^(?:\[[^\]]+\]\s*)?([^>]+)>([^:]+):(.*)$", frame)
+        if not match:
+            continue
+        source, header, payload = match.groups()
+        position = position_pattern.search(payload)
+        lat_lon = None
+        if position:
+            lat_deg, lat_min, lat_hemi, lon_deg, lon_min, lon_hemi = position.groups()
+            lat_lon = ((int(lat_deg) + float(lat_min) / 60) * (1 if lat_hemi == "N" else -1),
+                       (int(lon_deg) + float(lon_min) / 60) * (1 if lon_hemi == "E" else -1))
+        for raw_hop in header.split(",")[1:]:
+            if not raw_hop.strip().endswith("*"):
+                continue
+            hop = raw_hop.strip()[:-1].upper()
+            if not hop_pattern.match(hop) or hop.startswith(ignored_prefixes):
+                continue
+            item = observed.setdefault(hop, {"callsign": hop, "count": 0, "last_heard_utc": timestamp, "source_callsigns": set(), "position": None})
+            item["count"] += 1
+            item["last_heard_utc"] = max(item["last_heard_utc"] or timestamp, timestamp or "")
+            item["source_callsigns"].add(source.upper())
+            if lat_lon and item["position"] is None:
+                item["position"] = {"latitude": round(lat_lon[0], 5), "longitude": round(lat_lon[1], 5)}
+    entries = []
+    for item in observed.values():
+        entry = {**item, "source_callsigns": sorted(item["source_callsigns"])}
+        if entry["position"] and origin_lat is not None and origin_lon is not None:
+            lat1, lon1, lat2, lon2 = map(math.radians, [float(origin_lat), float(origin_lon), entry["position"]["latitude"], entry["position"]["longitude"]])
+            a = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+            entry["source_distance_km"] = round(6371.0 * 2 * math.asin(math.sqrt(a)), 1)
+        entries.append(entry)
+    entries.sort(key=lambda item: (item["count"], item["last_heard_utc"] or ""), reverse=True)
+    return {
+        "window_hours": APRS_DIGI_SURVEY_HOURS,
+        "window_start_utc": datetime.fromtimestamp(cutoff, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "observed_count": len(entries),
+        "observed": entries,
+        "message": "No digipeater hops have been observed locally in this survey window." if not entries else "Observed hops are based only on RF frames decoded by the ROC.",
     }
 
 
@@ -254,11 +432,17 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if route == "/api/system":
             self._json(collect_system_status())
             return
+        if route == "/api/telemetry":
+            self._json(read_telemetry(self.server.telemetry_path))
+            return
         if route == "/api/aprs":
             self._json(collect_aprs_status())
             return
         if route == "/api/aprs/frames":
             self._json(collect_aprs_frame_page(urlparse(self.path).query))
+            return
+        if route == "/api/aprs/digipeaters":
+            self._json(collect_aprs_digipeater_survey(self.server.station_config["station"]))
             return
         if route == "/api/aprs-map":
             params = parse_qs(urlparse(self.path).query)
@@ -304,7 +488,7 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             return
         if route == "/api/operator/diagnostics":
             if self._operator_session() is None:
-                self._json({"ok": False, "error": "administrator login required"}, HTTPStatus.UNAUTHORIZED)
+                self._json({"ok": False, "error": "operator login required"}, HTTPStatus.UNAUTHORIZED)
                 return
             gateway = collect_gateway_status(self.server.station_config)
             diagnostics = {
@@ -324,6 +508,16 @@ class RocRequestHandler(BaseHTTPRequestHandler):
                 "privacy": "Message bodies, subjects, recipients, credentials, and environment variables are excluded.",
             }
             self._download_json(diagnostics, "n0jcg-roc-diagnostics.json")
+            return
+        if route == "/api/admin-report/settings":
+            if self._operator_session() is None:
+                self._json({"ok": False, "error": "operator login required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            self._json(safe_report_status(
+                self.server.admin_report_settings_path,
+                self.server.admin_report_state_path,
+                self.server.admin_report_trigger_path,
+            ))
             return
         if route == "/api/weather":
             self._json(read_weather_status())
@@ -370,7 +564,7 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             if not self.server.operator_auth.verify_password(password):
                 self._record_login_failure()
                 append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="login", result="denied")
-                self._json({"ok": False, "error": "invalid administrator password"}, HTTPStatus.UNAUTHORIZED)
+                self._json({"ok": False, "error": "invalid operator password"}, HTTPStatus.UNAUTHORIZED)
                 return
             self._clear_login_failures()
             token, csrf_token, max_age = self.server.operator_auth.issue_session()
@@ -383,7 +577,7 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if route == "/api/operator/logout":
             session = self._operator_session(require_csrf=True)
             if session is None:
-                self._json({"ok": False, "error": "valid administrator session required"}, HTTPStatus.UNAUTHORIZED)
+                self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
                 return
             append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="logout", result="success")
             self._json(
@@ -394,7 +588,7 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if route == "/api/operator/action":
             session = self._operator_session(require_csrf=True)
             if session is None:
-                self._json({"ok": False, "error": "valid administrator session required"}, HTTPStatus.UNAUTHORIZED)
+                self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
                 return
             try:
                 payload = self._read_json(2048)
@@ -411,7 +605,34 @@ class RocRequestHandler(BaseHTTPRequestHandler):
                         append_audit(self.server.operator_audit_path, remote=self.client_address[0], event=action, result="blocked", detail="active RF session")
                         self._json({"ok": False, "error": "CMS test blocked: an RF session is active"}, HTTPStatus.CONFLICT)
                         return
-                result = request_helper(action, self.server.operator_socket_path)
+                parameters = None
+                helper_timeout = 35.0
+                if action == "wifi_connect":
+                    ssid = str(payload.get("ssid", ""))
+                    password = str(payload.get("password", ""))
+                    if not ssid or len(ssid.encode("utf-8")) > 32 or any(ord(character) < 32 for character in ssid):
+                        raise ValueError("SSID is invalid")
+                    if len(password.encode("utf-8")) > 64 or any(character in password for character in ("\n", "\r", "\x00")):
+                        raise ValueError("Wi-Fi password is invalid")
+                    parameters = {"ssid": ssid, "password": password}
+                    helper_timeout = 80.0
+                elif action == "ethernet_set":
+                    interface = str(payload.get("interface", ""))
+                    address_cidr = str(payload.get("address_cidr", ""))
+                    gateway = str(payload.get("gateway", ""))
+                    dns = str(payload.get("dns", ""))
+                    if not interface or len(interface) > 32 or not all(character.isalnum() or character in "_.:-" for character in interface):
+                        raise ValueError("Ethernet interface is invalid")
+                    if any(len(value) > 64 for value in (address_cidr, gateway, dns)):
+                        raise ValueError("Ethernet settings are invalid")
+                    parameters = {
+                        "interface": interface,
+                        "address_cidr": address_cidr,
+                        "gateway": gateway,
+                        "dns": dns,
+                    }
+                    helper_timeout = 70.0
+                result = request_helper(action, self.server.operator_socket_path, helper_timeout, parameters)
             except (OSError, ValueError, TypeError, json.JSONDecodeError, UnicodeError) as error:
                 append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="operator_action", result="failed", detail=str(error))
                 self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_GATEWAY)
@@ -421,6 +642,11 @@ class RocRequestHandler(BaseHTTPRequestHandler):
                 remote=self.client_address[0],
                 event=action,
                 result="success" if result.get("ok") else "failed",
+                detail=(
+                    str(payload.get("ssid", "")) if action == "wifi_connect"
+                    else str(payload.get("address_cidr", "")) if action == "ethernet_set"
+                    else ""
+                ),
             )
             self._json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_GATEWAY)
             return
@@ -450,6 +676,30 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             except (ValueError, TypeError, json.JSONDecodeError) as error:
                 self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
             return
+        if route == "/api/telemetry/reset":
+            if self._operator_session(require_csrf=True) is None:
+                self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            try:
+                result = reset_telemetry(self.server.telemetry_path)
+                append_audit(
+                    self.server.operator_audit_path,
+                    remote=self.client_address[0],
+                    event="telemetry_reset",
+                    result="success",
+                    detail=f"deleted_samples={result['deleted_samples']}",
+                )
+                self._json(result)
+            except (OSError, sqlite3.Error) as error:
+                append_audit(
+                    self.server.operator_audit_path,
+                    remote=self.client_address[0],
+                    event="telemetry_reset",
+                    result="failed",
+                    detail=str(error),
+                )
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
         if route == "/api/applications":
             length = int(self.headers.get("Content-Length", "0"))
             if length > 65536:
@@ -473,6 +723,65 @@ class RocRequestHandler(BaseHTTPRequestHandler):
                 self._json({"ok": True, **state})
             except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
                 self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if route == "/api/admin-report/settings":
+            if self._operator_session(require_csrf=True) is None:
+                self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            try:
+                payload = self._read_json(4096)
+                settings = save_report_settings(self.server.admin_report_settings_path, payload)
+                append_audit(
+                    self.server.operator_audit_path,
+                    remote=self.client_address[0],
+                    event="admin_report_settings",
+                    result="success",
+                    detail=f"enabled={settings['enabled']} interval_hours={settings['interval_hours']}",
+                )
+                self._json({
+                    "ok": True,
+                    **safe_report_status(
+                        self.server.admin_report_settings_path,
+                        self.server.admin_report_state_path,
+                        self.server.admin_report_trigger_path,
+                    ),
+                })
+            except (ValueError, TypeError, json.JSONDecodeError, UnicodeError, OSError) as error:
+                append_audit(
+                    self.server.operator_audit_path,
+                    remote=self.client_address[0],
+                    event="admin_report_settings",
+                    result="failed",
+                    detail=str(error),
+                )
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if route == "/api/admin-report/send-now":
+            if self._operator_session(require_csrf=True) is None:
+                self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            try:
+                self._read_json(256)
+                request = queue_report_now(
+                    self.server.admin_report_settings_path,
+                    self.server.admin_report_trigger_path,
+                )
+                append_audit(
+                    self.server.operator_audit_path,
+                    remote=self.client_address[0],
+                    event="admin_report_send_now",
+                    result="queued",
+                )
+                self._json({"ok": True, "message": "Operator report queued for immediate delivery.", **request})
+            except (ValueError, TypeError, json.JSONDecodeError, UnicodeError, OSError) as error:
+                append_audit(
+                    self.server.operator_audit_path,
+                    remote=self.client_address[0],
+                    event="admin_report_send_now",
+                    result="failed",
+                    detail=str(error),
+                )
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.CONFLICT)
             return
         self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
@@ -561,6 +870,10 @@ class RocServer(ThreadingHTTPServer):
     aprsfi_settings_path: Path
     aprsfi_cache_path: Path
     station_settings_path: Path
+    admin_report_settings_path: Path
+    admin_report_state_path: Path
+    admin_report_trigger_path: Path
+    telemetry_path: Path
     operator_auth: OperatorAuth
     operator_audit_path: Path
     operator_socket_path: Path
@@ -568,8 +881,13 @@ class RocServer(ThreadingHTTPServer):
     login_failures: dict[str, list[float]]
     login_lock: threading.Lock
     trial_controller: RocTrialController
+    telemetry_stop: threading.Event
+    telemetry_thread: threading.Thread | None
 
     def server_close(self) -> None:
+        self.telemetry_stop.set()
+        if self.telemetry_thread:
+            self.telemetry_thread.join(timeout=3)
         self.trial_controller.close()
         super().server_close()
 
@@ -584,12 +902,17 @@ def create_server(
     aprsfi_settings_path: Path = DEFAULT_APRSFI_SETTINGS_PATH,
     aprsfi_cache_path: Path = DEFAULT_APRSFI_CACHE_PATH,
     station_settings_path: Path = DEFAULT_STATION_SETTINGS_PATH,
+    admin_report_settings_path: Path = DEFAULT_ADMIN_REPORT_SETTINGS_PATH,
+    admin_report_state_path: Path = DEFAULT_ADMIN_REPORT_STATE_PATH,
+    admin_report_trigger_path: Path = DEFAULT_ADMIN_REPORT_TRIGGER_PATH,
+    telemetry_path: Path = DEFAULT_TELEMETRY_PATH,
     operator_auth: OperatorAuth | None = None,
     operator_audit_path: Path = DEFAULT_OPERATOR_AUDIT_PATH,
     operator_socket_path: Path = DEFAULT_OPERATOR_SOCKET_PATH,
     maintenance_path: Path = DEFAULT_MAINTENANCE_PATH,
     license_state_path: Path = DEFAULT_LICENSE_STATE_PATH,
     trial_controller: RocTrialController | None = None,
+    start_telemetry_collector: bool = True,
 ) -> RocServer:
     server = RocServer((host, port), RocRequestHandler)
     server.web_root = web_root
@@ -598,6 +921,10 @@ def create_server(
     server.aprsfi_settings_path = aprsfi_settings_path
     server.aprsfi_cache_path = aprsfi_cache_path
     server.station_settings_path = station_settings_path
+    server.admin_report_settings_path = admin_report_settings_path
+    server.admin_report_state_path = admin_report_state_path
+    server.admin_report_trigger_path = admin_report_trigger_path
+    server.telemetry_path = telemetry_path
     server.operator_auth = operator_auth or OperatorAuth(
         os.environ.get("ROC_OPERATOR_PASSWORD_HASH", ""),
         os.environ.get("ROC_OPERATOR_SESSION_SECRET", ""),
@@ -616,6 +943,16 @@ def create_server(
     )
     server.login_failures = {}
     server.login_lock = threading.Lock()
+    server.telemetry_stop = threading.Event()
+    server.telemetry_thread = None
+    if start_telemetry_collector:
+        server.telemetry_thread = threading.Thread(
+            target=run_telemetry_collector,
+            args=(server,),
+            name="n0jcg-telemetry",
+            daemon=True,
+        )
+        server.telemetry_thread.start()
     return server
 
 

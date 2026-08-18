@@ -1,8 +1,9 @@
 [Unit]
 Description=N0JCG LinBPQ Winlink RMS gateway
-After=network-online.target n0jcg-winlink-modem.service
+After=network-online.target n0jcg-winlink-modem.service n0jcg-vara-fm.service
 Wants=network-online.target
 Requires=n0jcg-winlink-modem.service
+Wants=n0jcg-vara-fm.service
 ConditionPathExists=/etc/n0jcg/winlink-rms-approved
 ConditionPathExists=/var/lib/n0jcg-winlink/bpq32.cfg
 ConditionFileIsExecutable=/opt/n0jcg/linbpq/linbpq
