@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 - 2026-08-18
+
+### APRS telemetry
+
+- Corrected telemetry and definition packets to use the standard direct APRS
+  information-field format required by APRS-IS telemetry indexers.
+
 ## 0.1.2 - 2026-08-18
 
 Operational release for APRS observability and passive coverage planning.

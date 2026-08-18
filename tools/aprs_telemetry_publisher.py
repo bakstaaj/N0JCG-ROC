@@ -66,23 +66,28 @@ def snapshot(previous_count: int | None) -> tuple[list[int], int, dict]:
     return values, count, {"state": pipeline.get("state"), "packet_count": count, "packet_delta": delta, "bits": bits}
 
 
-def message(payload: str) -> str:
-    # APRS message addressee is nine characters, padded with spaces.
-    return f"{CALLSIGN}>{DESTINATION}::{CALLSIGN:<9}:{payload}"
+def frame(payload: str) -> str:
+    """Build a direct APRS telemetry information-field packet.
+
+    Telemetry data and its PARM/UNIT/EQNS/BITS definitions are not APRS
+    messages. Keeping the payload directly after the colon is required for
+    APRS-IS telemetry indexers such as aprs.fi to recognize the packets.
+    """
+    return f"{CALLSIGN}>{DESTINATION}:{payload}"
 
 
 def definitions() -> list[str]:
     return [
-        message("PARM.CPU_TEMP,CPU_LOAD,MEM_USED,RF_FRAMES,PIPELINE"),
-        message("UNIT.degC,percent,percent,frames,score"),
-        message("EQNS.0,0.392157,0,0,0.392157,0,0,0.392157,0,0,1,0,0,1,0"),
-        message("BITS.11111111,ROC active|RF decode|audio pipeline|recent RF|pipeline activity|API reachable|reserved|reserved"),
+        frame("PARM.CPU_TEMP,CPU_LOAD,MEM_USED,RF_FRAMES,PIPELINE"),
+        frame("UNIT.degC,percent,percent,frames,score"),
+        frame("EQNS.0,0.392157,0,0,0.392157,0,0,0.392157,0,0,1,0,0,1,0"),
+        frame("BITS.11111111,ROC active|RF decode|audio pipeline|recent RF|pipeline activity|API reachable|reserved|reserved"),
     ]
 
 
 def telemetry(values: list[int], sequence: int, bits: list[bool]) -> str:
     digital = "".join("1" if bit else "0" for bit in bits)
-    return message(f"T#{sequence % 1000:03d},{','.join(f'{value:03d}' for value in values)},{digital}")
+    return frame(f"T#{sequence % 1000:03d},{','.join(f'{value:03d}' for value in values)},{digital}")
 
 
 def run() -> None:

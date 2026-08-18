@@ -8,7 +8,9 @@ The five analog channels are CPU temperature, CPU utilization, memory use,
 decoded RF frames since the previous report, and pipeline health score. The
 digital bits report receiver activity, RF decode recency, audio-pipeline
 activity, API reachability, and reserved fields. Definitions are sent before
-each report so aprs.fi can label the values.
+each report as direct APRS telemetry information packets (not addressed APRS
+text messages), so aprs.fi and other telemetry indexers can label and graph
+the values.
 
 Telemetry is disabled by default. Enable it by adding the settings from
 `config/aprs-telemetry.env.example` to `/etc/n0jcg/aprs-igate.env`, then restart
