@@ -78,10 +78,13 @@ def frame(payload: str) -> str:
 
 def definitions() -> list[str]:
     return [
-        frame("PARM.CPU_TEMP,CPU_LOAD,MEM_USED,RF_FRAMES,PIPELINE"),
+        # APRS101 limits the five parameter labels to 7, 7, 6, 6, and 5
+        # characters respectively. Keep these short so aprs.fi accepts them.
+        frame("PARM.CPU,LOAD,MEM,RF,PIPE"),
         frame("UNIT.degC,percent,percent,frames,score"),
         frame("EQNS.0,0.392157,0,0,0.392157,0,0,0.392157,0,0,1,0,0,1,0"),
-        frame("BITS.11111111,ROC active|RF decode|audio pipeline|recent RF|pipeline activity|API reachable|reserved|reserved"),
+        # BITS has one project-name field, limited to 23 characters.
+        frame("BITS.11111111,ROC health bits"),
     ]
 
 

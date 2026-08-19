@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 - 2026-08-18
+
+### APRS telemetry
+
+- Constrained `PARM` labels and the `BITS` project name to APRS101 field
+  limits so aprs.fi accepts and displays the definitions.
+
 ## 0.1.4 - 2026-08-18
 
 ### Operator experience
