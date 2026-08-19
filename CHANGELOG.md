@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4 - 2026-08-18
+
+### Operator experience
+
+- Simplified the dashboard header to show the canonical **Radio Operations
+  Center** title.
+
 ## 0.1.3 - 2026-08-18
 
 ### APRS telemetry
