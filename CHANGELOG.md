@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 - 2026-08-18
+
+### APRS telemetry
+
+- Persisted the telemetry sequence across publisher restarts so aprs.fi does
+  not discard samples as out-of-order.
+
 ## 0.1.6 - 2026-08-18
 
 ### APRS telemetry

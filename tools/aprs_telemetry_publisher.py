@@ -98,12 +98,21 @@ def telemetry(values: list[int], sequence: int, bits: list[bool]) -> str:
     return frame(f"T#{sequence % 1000:03d},{','.join(f'{value:03d}' for value in values)},{digital}")
 
 
+def initial_sequence() -> int:
+    """Continue the sequence across service restarts."""
+    try:
+        saved = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        return (int(saved.get("sequence", -1)) + 1) % 1000
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return int(time.time() // INTERVAL) % 1000
+
+
 def run() -> None:
     if not PASSCODE:
         raise SystemExit("APRS telemetry requires APRS_IGATE_PASSCODE")
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     previous_count = None
-    sequence = 0
+    sequence = initial_sequence()
     while True:
         try:
             values, count, metadata = snapshot(previous_count)
