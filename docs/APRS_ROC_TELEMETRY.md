@@ -8,9 +8,9 @@ The five analog channels are CPU temperature, CPU utilization, memory use,
 decoded RF frames since the previous report, and pipeline health score. The
 digital bits report receiver activity, RF decode recency, audio-pipeline
 activity, API reachability, and reserved fields. Definitions are sent before
-each report as direct APRS telemetry information packets (not addressed APRS
-text messages), so aprs.fi and other telemetry indexers can label and graph
-the values. The parameter labels follow the APRS101 field-length limits, and
+each report as standard addressed APRS telemetry-definition messages, so
+aprs.fi and other telemetry indexers can label and graph the values. The
+parameter labels follow the APRS101 field-length limits, and
 the digital bit meanings are documented here because the protocol provides one
 project name rather than eight separate bit labels.
 

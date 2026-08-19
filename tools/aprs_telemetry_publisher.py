@@ -76,15 +76,20 @@ def frame(payload: str) -> str:
     return f"{CALLSIGN}>{DESTINATION}:{payload}"
 
 
+def telemetry_message(payload: str) -> str:
+    """Build an addressed APRS telemetry-definition message."""
+    return f"{CALLSIGN}>{DESTINATION}::{CALLSIGN:<9}:{payload}"
+
+
 def definitions() -> list[str]:
     return [
         # APRS101 limits the five parameter labels to 7, 7, 6, 6, and 5
         # characters respectively. Keep these short so aprs.fi accepts them.
-        frame("PARM.CPU,LOAD,MEM,RF,PIPE"),
-        frame("UNIT.degC,percent,percent,frames,score"),
-        frame("EQNS.0,0.392157,0,0,0.392157,0,0,0.392157,0,0,1,0,0,1,0"),
+        telemetry_message("PARM.CPU,LOAD,MEM,RF,PIPE"),
+        telemetry_message("UNIT.degC,percent,percent,frames,score"),
+        telemetry_message("EQNS.0,0.392157,0,0,0.392157,0,0,0.392157,0,0,1,0,0,1,0"),
         # BITS has one project-name field, limited to 23 characters.
-        frame("BITS.11111111,ROC health bits"),
+        telemetry_message("BITS.11111111,ROC health bits"),
     ]
 
 

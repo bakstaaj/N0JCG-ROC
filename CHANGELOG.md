@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6 - 2026-08-18
+
+### APRS telemetry
+
+- Restored addressed APRS message framing for telemetry definitions while
+  retaining direct `T#` data packets.
+
 ## 0.1.5 - 2026-08-18
 
 ### APRS telemetry
