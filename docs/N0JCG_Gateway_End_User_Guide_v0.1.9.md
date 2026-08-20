@@ -1,6 +1,6 @@
 # N0JCG Gateway End User Guide
 
-**Version:** 0.1.1
+**Version:** 0.1.9
 
 **Publication:** August 2026
 
@@ -98,8 +98,8 @@ sudo apt update
 sudo apt install -y git python3 curl
 sudo install -d -o n0jcg -g n0jcg /home/n0jcg/sdrdev
 cd /home/n0jcg/sdrdev
-tar -xzf N0JCG-ROC-v0.1.1.tar.gz
-mv N0JCG-ROC-v0.1.1 N0JCG-ROC
+tar -xzf N0JCG-ROC-v0.1.9.tar.gz
+mv N0JCG-ROC-v0.1.9 N0JCG-ROC
 cd N0JCG-ROC
 ```
 
