@@ -77,6 +77,8 @@ class SafetyTests(unittest.TestCase):
     def test_cwop_weather_packet_uses_utc_timestamp_suffix(self) -> None:
         source = (ROOT / "tools" / "cwop_weather_uploader.py").read_text(encoding="utf-8")
         self.assertIn('strftime("%d%H%Mz")', source)
+        self.assertIn('body = f"{timestamp}{_coord', source)
+        self.assertNotIn('body = f"{timestamp} {_coord', source)
 
     def test_operational_applications_are_direct_links_not_roc_proxies(self) -> None:
         server = (ROOT / "src" / "n0jcg_roc" / "server.py").read_text(encoding="utf-8")
