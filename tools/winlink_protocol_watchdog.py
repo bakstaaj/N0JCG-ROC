@@ -32,6 +32,26 @@ def journal(service: str) -> list[str]:
     return result.stdout.splitlines() if result.returncode == 0 else []
 
 
+def completed_session_after_last_event(lines: list[str], last_event: str | None) -> bool:
+    """Treat a LinBPQ KISS session summary as a completed session boundary."""
+    if not last_event:
+        return False
+    try:
+        boundary = datetime.fromisoformat(last_event.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    for line in lines:
+        if "KISS Session Stats" not in line:
+            continue
+        stamp = line.split()[0] if line.split() else ""
+        try:
+            if datetime.fromisoformat(stamp.replace("Z", "+00:00")) > boundary:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def write_state(payload: dict) -> None:
     STATE.parent.mkdir(parents=True, exist_ok=True)
     temporary = STATE.with_suffix(".tmp")
@@ -43,7 +63,9 @@ def main() -> None:
     last_recovery = 0.0
     while True:
         now = datetime.now(timezone.utc)
-        diagnostics = summarize_rf_diagnostics(journal("n0jcg-winlink-rms.service"), journal("n0jcg-winlink-modem.service"), now)
+        rms_lines = journal("n0jcg-winlink-rms.service")
+        modem_lines = journal("n0jcg-winlink-modem.service")
+        diagnostics = summarize_rf_diagnostics(rms_lines, modem_lines, now)
         last_event = diagnostics.get("last_event_utc")
         age = None
         if last_event:
@@ -51,7 +73,12 @@ def main() -> None:
                 age = max(0, int((now - datetime.fromisoformat(last_event.replace("Z", "+00:00"))).total_seconds()))
             except ValueError:
                 pass
-        stale = bool(age is not None and age >= STALE_SECONDS and diagnostics.get("phase") not in {"idle", "disconnected"})
+        stale = bool(
+            age is not None
+            and age >= STALE_SECONDS
+            and diagnostics.get("phase") not in {"idle", "disconnected"}
+            and not completed_session_after_last_event(rms_lines, last_event)
+        )
         recovered = False
         if stale and os.environ.get("WINLINK_AUTO_RECOVER", "0") == "1" and time.time() - last_recovery >= STALE_SECONDS:
             try:
