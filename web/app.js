@@ -835,6 +835,8 @@ function setCwopLocked(locked) {
   form.querySelector("output").textContent = locked ? "Unlock Protected operator controls to configure CWOP." : "CWOP settings are operator-protected.";
 }
 
+let cwopSettingsDirty = false;
+
 function showCwopSettings(payload) {
   const form = document.querySelector("#cwop-settings-form");
   if (!form) return;
@@ -846,10 +848,12 @@ function showCwopSettings(payload) {
   const state = document.querySelector("#cwop-configured");
   state.textContent = payload.configured ? (payload.enabled ? "Enabled" : "Configured") : "Not configured";
   state.className = `application-state application-state--${payload.configured ? (payload.enabled ? "online" : "advisory") : "offline"}`;
+  cwopSettingsDirty = false;
   setCwopLocked(false);
 }
 
 async function loadCwopSettings() {
+  if (cwopSettingsDirty) return null;
   const response = await fetch("/api/weather/cwop/settings", {cache: "no-store", credentials: "same-origin"});
   if (!response.ok) throw new Error(response.status === 401 ? "Operator login required" : "CWOP settings request failed");
   const payload = await response.json();
@@ -859,6 +863,8 @@ async function loadCwopSettings() {
 
 function initCwopSettings() {
   const form = document.querySelector("#cwop-settings-form");
+  form?.addEventListener("input", () => { cwopSettingsDirty = true; });
+  form?.addEventListener("change", () => { cwopSettingsDirty = true; });
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const output = form.querySelector("output");
