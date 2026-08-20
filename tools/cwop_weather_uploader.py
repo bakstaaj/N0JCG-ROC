@@ -59,6 +59,7 @@ def _weather_packet(observation: dict[str, object]) -> str:
     wind_mph = int(round((_num(fields.get("wind_speed_mps")) or 0) * 2.236936))
     gust_mph = int(round((_num(fields.get("wind_gust_mps")) or 0) * 2.236936))
     temp_f = int(round((_num(fields.get("temperature_c")) or 0) * 9 / 5 + 32))
+    humidity = _num(fields.get("humidity_percent"))
     pressure = _num(fields.get("pressure_hpa"))
     pressure_tenths = int(round(pressure * 10)) if pressure is not None else None
     rain = _num(fields.get("rain_today_mm"))
@@ -71,6 +72,8 @@ def _weather_packet(observation: dict[str, object]) -> str:
     body = f"@{timestamp}{_coord(lat, 'N', 'S', 2)}/{_coord(lon, 'E', 'W', 3)}_"
     body += f"{wind_dir:03d}/{wind_mph:03d}g{gust_mph:03d}t{temp_f:03d}"
     body += f"r{rain_hundredths:03d}"
+    if humidity is not None:
+        body += f"h{max(0, min(99, int(round(humidity)))):02d}"
     if pressure_tenths is not None:
         body += f"b{pressure_tenths:06d}"
     body += f" {CALL} ROC Weather"

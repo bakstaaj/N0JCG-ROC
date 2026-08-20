@@ -79,6 +79,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn('strftime("%d%H%Mz")', source)
         self.assertIn('body = f"@{timestamp}{_coord', source)
         self.assertNotIn('body = f"{timestamp} {_coord', source)
+        self.assertIn('fields.get("humidity_percent")', source)
+        self.assertNotIn('fields.get("indoor_temperature_c")', source)
 
     def test_operational_applications_are_direct_links_not_roc_proxies(self) -> None:
         server = (ROOT / "src" / "n0jcg_roc" / "server.py").read_text(encoding="utf-8")
