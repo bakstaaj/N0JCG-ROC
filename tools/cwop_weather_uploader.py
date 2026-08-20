@@ -63,11 +63,12 @@ def _weather_packet(observation: dict[str, object]) -> str:
     pressure_tenths = int(round(pressure * 10)) if pressure is not None else None
     rain = _num(fields.get("rain_today_mm"))
     rain_hundredths = int(round(rain / 25.4 * 100)) if rain is not None else 0
-    # APRS timestamped position/weather reports have no separator between the
+    # APRS timestamped position/weather reports begin with '@' and have no
+    # separator between the
     # UTC timestamp and the latitude.  A space here makes APRS-IS accept the
     # line as text but causes consumers such as aprs.fi to reject the weather
     # information field as an unsupported packet format.
-    body = f"{timestamp}{_coord(lat, 'N', 'S', 2)}/{_coord(lon, 'E', 'W', 3)}_"
+    body = f"@{timestamp}{_coord(lat, 'N', 'S', 2)}/{_coord(lon, 'E', 'W', 3)}_"
     body += f"{wind_dir:03d}/{wind_mph:03d}g{gust_mph:03d}t{temp_f:03d}"
     body += f"r{rain_hundredths:03d}"
     if pressure_tenths is not None:
