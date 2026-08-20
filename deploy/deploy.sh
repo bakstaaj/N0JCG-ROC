@@ -25,7 +25,10 @@ if [[ "${MODE}" == check ]]; then echo 'FINAL: PASS - deployment preflight only;
 [[ -n "${ROC_SUDO_PASS:-}" ]] || { echo 'FINAL: FAIL - set ROC_SUDO_PASS transiently for service restart'; exit 1; }
 stage_dir="$(mktemp -d)"; trap 'rm -rf "${stage_dir}"' EXIT
 rsync -a --exclude=.git --exclude=.server.env --exclude=config/station.toml --exclude=__pycache__ --exclude=runtime "${PROJECT_DIR}/" "${stage_dir}/"
-rsync -az --delete --exclude=config/station.toml --exclude=runtime -e "${RSYNC_SSH}" "${stage_dir}/" "${ROC_USER}@${ROC_HOST}:${ROC_REMOTE_DIR}/"
+# The remote tree may contain root-owned service artifacts from an earlier
+# install. Transfer content and timestamps, but never require the SSH user to
+# preserve permissions, owner, or group metadata on existing files.
+rsync -rltz --no-perms --no-owner --no-group --delete --exclude=config/station.toml --exclude=runtime -e "${RSYNC_SSH}" "${stage_dir}/" "${ROC_USER}@${ROC_HOST}:${ROC_REMOTE_DIR}/"
 "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "cd ${ROC_REMOTE_DIR} && if [ ! -f config/station.toml ]; then cp config/station.example.toml config/station.toml; fi && chmod +x tools/*.sh deploy/*.sh && ./tools/validate.sh"
 printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -d -m 0755 /usr/local/libexec/n0jcg && install -m 0644 ${ROC_REMOTE_DIR}/src/n0jcg_roc/operator_activity.py /usr/local/libexec/n0jcg/operator_activity.py && install -m 0755 ${ROC_REMOTE_DIR}/deploy/operator_helper.py /usr/local/libexec/n0jcg/operator_helper.py && install -m 0755 ${ROC_REMOTE_DIR}/deploy/run-vara-fm.sh /usr/local/libexec/n0jcg/run-vara-fm.sh && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-operator-helper.service /etc/systemd/system/n0jcg-operator-helper.service && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-vara-fm.service /etc/systemd/system/n0jcg-vara-fm.service && systemctl daemon-reload && systemctl enable n0jcg-operator-helper.service n0jcg-vara-fm.service && systemctl restart n0jcg-operator-helper.service n0jcg-vara-fm.service'"
 printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-roc.service /etc/systemd/system/n0jcg-roc.service && systemctl daemon-reload && systemctl enable n0jcg-roc.service && systemctl restart n0jcg-roc.service'"

@@ -231,6 +231,7 @@ button, select { font: inherit; }
 .settings-actions output { color: var(--n0-color-text-muted); font-size: .8rem; overflow-wrap: anywhere; }
 .settings-card--wide { grid-column: 1 / -1; }
 .settings-fields--key { grid-template-columns: minmax(0, 1fr); }
+.cwop-settings-fields { grid-template-columns: minmax(130px, 1fr) repeat(3, minmax(120px, .8fr)); }
 .admin-report-fields { grid-template-columns: minmax(180px, .8fr) minmax(240px, 1.4fr) minmax(150px, .55fr); }
 .wifi-settings-fields { grid-template-columns: minmax(220px, 1.3fr) minmax(190px, 1fr) minmax(190px, 1fr); }
 .wifi-scan-actions { align-items: center; margin-bottom: 14px; }
@@ -395,6 +396,7 @@ button, select { font: inherit; }
   .application-card { grid-template-columns: 44px 1fr; }
   .application-card img { width: 44px; height: 44px; }
   .settings-fields { grid-template-columns: 1fr; }
+  .cwop-settings-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-card-header, .settings-actions { align-items: flex-start; flex-direction: column; }
   .integration-controls { width: 100%; justify-content: space-between; }
   .aprs-map-panel, #aprs-map { min-height: 360px; height: 360px; }

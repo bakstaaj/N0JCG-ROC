@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.9 - 2026-08-19
+
+### CWOP configuration
+
+- Made CWOP latitude and longitude free-form inputs without spinner controls.
+- Compactly aligned the four CWOP settings on one row on desktop layouts.
+
 ## 0.1.8 - 2026-08-19
 
 ### CWOP weather upload
