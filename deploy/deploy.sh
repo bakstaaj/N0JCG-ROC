@@ -8,6 +8,10 @@ ROC_PORT="${ROC_PORT:-80}"
 ROC_REMOTE_DIR="${ROC_REMOTE_DIR:-/home/n0jcg/sdrdev/N0JCG-ROC}"
 ROC_IDENTITY_FILE="${ROC_IDENTITY_FILE:-${HOME}/.ssh/n0jcg_roc_ed25519}"
 MODE=deploy
+if [[ -n "${SUDO_USER:-}" || "${EUID:-$(id -u)}" -eq 0 ]]; then
+  echo 'FINAL: FAIL - run deploy.sh as the development user, not with sudo'
+  exit 1
+fi
 if [[ "${1:-}" == '--check-only' ]]; then MODE=check; elif [[ $# -ne 0 ]]; then echo 'Usage: deploy.sh [--check-only]'; exit 2; fi
 [[ "${ROC_PORT}" =~ ^[0-9]+$ ]] && (( ROC_PORT >= 1 && ROC_PORT <= 65535 )) || { echo 'FINAL: FAIL - invalid ROC_PORT'; exit 1; }
 [[ "${ROC_REMOTE_DIR}" == '/home/n0jcg/sdrdev/N0JCG-ROC' ]] || { echo 'FINAL: FAIL - unexpected ROC_REMOTE_DIR'; exit 1; }
@@ -23,6 +27,10 @@ listener="$(${SSH[@]} "${ROC_USER}@${ROC_HOST}" "ss -ltnH 'sport = :${ROC_PORT}'
 if [[ -n "${listener}" ]]; then "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" 'systemctl is-active --quiet n0jcg-roc.service' || { echo "FINAL: FAIL - port ${ROC_PORT} is owned by an unknown listener"; exit 1; }; fi
 if [[ "${MODE}" == check ]]; then echo 'FINAL: PASS - deployment preflight only; no files changed'; exit 0; fi
 [[ -n "${ROC_SUDO_PASS:-}" ]] || { echo 'FINAL: FAIL - set ROC_SUDO_PASS transiently for service restart'; exit 1; }
+if ! printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" 'sudo -S -p "" -k true' >/dev/null 2>&1; then
+  echo 'FINAL: FAIL - ROC_SUDO_PASS was rejected; no files were deployed'
+  exit 1
+fi
 stage_dir="$(mktemp -d)"; trap 'rm -rf "${stage_dir}"' EXIT
 rsync -a --exclude=.git --exclude=.server.env --exclude=config/station.toml --exclude=__pycache__ --exclude=runtime "${PROJECT_DIR}/" "${stage_dir}/"
 # The remote tree may contain root-owned service artifacts from an earlier

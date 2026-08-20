@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROC_HOST="${ROC_HOST:-192.168.68.145}"
+if [[ -n "${SUDO_USER:-}" || "${EUID:-$(id -u)}" -eq 0 ]]; then
+  echo 'FINAL: FAIL - run setup_server_auth.sh as the development user, not with sudo'
+  exit 1
+fi
+
+ROC_HOST="${ROC_HOST:-192.168.68.114}"
 ROC_USER="${ROC_USER:-n0jcg}"
 ROC_IDENTITY_FILE="${ROC_IDENTITY_FILE:-${HOME}/.ssh/n0jcg_roc_ed25519}"
 
