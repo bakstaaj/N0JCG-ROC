@@ -363,10 +363,10 @@ function showWinlink(gateway) {
   });
   document.querySelector("#winlink-updated").textContent = `Updated ${new Date().toLocaleTimeString()}`;
   showWinlinkStatistics(winlink.statistics_24h || {});
-  showWinlinkReliability(winlink.reliability || {}, winlink.rf_diagnostics || {});
+  showWinlinkReliability(winlink.reliability || {}, winlink.rf_diagnostics || {}, winlink.protocol_watchdog || {});
 }
 
-function showWinlinkReliability(reliability, diagnostic = {}) {
+function showWinlinkReliability(reliability, diagnostic = {}, watchdog = {}) {
   const state = document.querySelector("#winlink-reliability-state");
   const labels = {healthy: "Healthy", warning: "Needs attention", fault: "Service fault"};
   state.textContent = labels[reliability.state] || "Unknown";
@@ -395,8 +395,12 @@ function showWinlinkReliability(reliability, diagnostic = {}) {
     disconnected: "Disconnected",
   };
   document.querySelector("#winlink-rf-phase").textContent = phaseLabels[diagnostic.phase] || "Unknown";
-  document.querySelector("#winlink-rf-finding").textContent = diagnostic.finding || "No protocol finding available.";
-  document.querySelector("#winlink-rf-next-action").textContent = diagnostic.next_action || "Collect a bounded RF capture for the next session.";
+  document.querySelector("#winlink-rf-finding").textContent = watchdog.stale
+    ? `STALE SESSION: ${watchdog.finding || diagnostic.finding || "No protocol progress detected."}`
+    : (watchdog.finding || diagnostic.finding || "No protocol finding available.");
+  document.querySelector("#winlink-rf-next-action").textContent = watchdog.stale
+    ? "Use Recover stalled RMS session after confirming the RF channel is clear."
+    : (watchdog.next_action || diagnostic.next_action || "Collect a bounded RF capture for the next session.");
 }
 
 function showWinlinkStatistics(statistics) {
@@ -945,6 +949,7 @@ function showOperatorStatus(status) {
     badge.className = "n0-status n0-status--unknown";
   }
   document.querySelector('[data-operator-action="restart"]').disabled = !status.authenticated;
+  document.querySelector('[data-operator-action="rms_recover"]').disabled = !status.authenticated || Boolean(status.maintenance_mode) || Boolean(status.rf_session_active);
   document.querySelector('[data-operator-action="maintenance_on"]').disabled = !status.authenticated || Boolean(status.maintenance_mode);
   document.querySelector('[data-operator-action="maintenance_off"]').disabled = !status.authenticated || !status.maintenance_mode;
   const cmsBlocked = !status.authenticated || status.maintenance_mode || !status.rf_activity_check_available || status.rf_session_active;
@@ -989,6 +994,7 @@ function operatorMessage(message, failed = false) {
 async function runOperatorAction(action) {
   const confirmations = {
     restart: "Restart the Winlink RMS and Dire Wolf services now? Active sessions will be disconnected.",
+    rms_recover: "Recover a stalled RMS session? This stops and restarts only LinBPQ RMS after verifying that no RF session is active.",
     maintenance_on: "Stop the Winlink RMS and modem and enter maintenance mode?",
     maintenance_off: "Start the Winlink modem and RMS and return the gateway online?",
     cms_test: "Run a network-only authenticated CMS connectivity test? The ROC will block this action if an RF session is active.",

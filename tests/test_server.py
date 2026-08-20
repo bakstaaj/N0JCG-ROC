@@ -729,6 +729,17 @@ class ServerTests(unittest.TestCase):
                 self.assertIn(b"an RF session is active", active_session.exception.read())
                 active_session.exception.close()
 
+            recover_request = Request(
+                self.base_url + "/api/operator/action",
+                data=b'{"action":"rms_recover"}',
+                method="POST",
+                headers={"Content-Type": "application/json", "Cookie": cookie, "X-CSRF-Token": login_payload["csrf_token"]},
+            )
+            with patch("n0jcg_roc.server.request_helper", return_value={"ok": True, "action": "rms_recover"}) as helper:
+                with urlopen(recover_request, timeout=5) as recover_response:
+                    self.assertTrue(json.loads(recover_response.read())["ok"])
+                helper.assert_called_once_with("rms_recover", self.server.operator_socket_path, 35.0, None)
+
             diagnostics_request = Request(self.base_url + "/api/operator/diagnostics", headers={"Cookie": cookie})
             with urlopen(diagnostics_request, timeout=5) as diagnostics_response:
                 diagnostics = json.loads(diagnostics_response.read())

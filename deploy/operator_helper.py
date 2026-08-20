@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import time
 
 try:
     from operator_activity import probe_rf_session
@@ -113,6 +114,20 @@ def ethernet_result(action: str, arguments: list[str], timeout: int = 30) -> dic
 
 
 def perform(action: str, parameters: object = None) -> dict:
+    if action == "rms_recover":
+        activity = probe_rf_session()
+        if not activity.get("available"):
+            return {"ok": False, "action": action, "error": "RMS recovery blocked: RF activity state is unavailable", "rf_activity": activity}
+        if activity.get("active"):
+            return {"ok": False, "action": action, "error": "RMS recovery blocked: an RF session is active", "rf_activity": activity}
+        stopped = run(["systemctl", "stop", "n0jcg-winlink-rms.service"], timeout=20)
+        if stopped.returncode != 0:
+            return {"ok": False, "action": action, "error": "RMS stop failed", "services": service_states()}
+        time.sleep(5)
+        started = run(["systemctl", "start", "n0jcg-winlink-rms.service"], timeout=20)
+        if started.returncode != 0:
+            return {"ok": False, "action": action, "error": "RMS start failed", "services": service_states()}
+        return {"ok": True, "action": action, "message": "RMS session recovered; modem and RF configuration were left unchanged", "services": service_states()}
     if action == "restart":
         commands = [
             ["systemctl", "restart", "n0jcg-winlink-modem.service"],

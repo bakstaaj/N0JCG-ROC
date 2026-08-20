@@ -15,6 +15,7 @@ RUNTIME_CONFIG_PATH = Path("/var/lib/n0jcg-winlink/bpq32.cfg")
 MAIL_STORE_PATH = Path("/var/lib/n0jcg-winlink/Mail")
 MESSAGE_INDEX_PATH = Path("/var/lib/n0jcg-winlink/DIRMES.SYS")
 STATUS_CACHE_PATH = Path("/var/lib/n0jcg-roc/winlink-status.json")
+PROTOCOL_STATE_PATH = Path("/var/lib/n0jcg-roc/winlink-protocol-health.json")
 PTT_DEVICE_PATH = Path(
     "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_30217bb31dc6ef11ba3469527a5e3baa-if00-port0"
 )
@@ -441,6 +442,17 @@ def _load_cache(path: Path) -> dict:
         return {}
 
 
+def _load_protocol_state(path: Path = PROTOCOL_STATE_PATH) -> dict:
+    """Read watchdog state without exposing journals or mailbox contents."""
+    payload = _load_cache(path)
+    allowed = {
+        "updated_utc", "phase", "finding", "next_action", "last_event_utc",
+        "last_event_age_seconds", "stale", "auto_recover_enabled", "recovered",
+        "evidence_events", "privacy",
+    }
+    return {key: payload[key] for key in allowed if key in payload}
+
+
 def _store_cache(path: Path, payload: dict) -> None:
     try:
         if not path.parent.is_dir():
@@ -600,6 +612,7 @@ def collect_winlink_status(
         "session_count_observed": len(sessions),
         "statistics_24h": statistics_24h,
         "reliability": reliability,
+        "protocol_watchdog": _load_protocol_state(),
         "rf_diagnostics": rf_diagnostics,
         "queues": {
             "local_message_store": stored_messages,

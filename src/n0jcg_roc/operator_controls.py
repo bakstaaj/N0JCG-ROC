@@ -15,7 +15,7 @@ import time
 SESSION_SECONDS = 30 * 60
 PASSWORD_ITERATIONS = 600_000
 ALLOWED_ACTIONS = {
-    "restart", "maintenance_on", "maintenance_off", "cms_test",
+    "restart", "rms_recover", "maintenance_on", "maintenance_off", "cms_test",
     "wifi_scan", "wifi_connect", "ethernet_status", "ethernet_set", "ethernet_confirm",
 }
 TRIAL_SERVICE_ACTIONS = {"trial_services_start", "trial_services_stop"}

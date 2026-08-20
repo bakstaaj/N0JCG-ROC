@@ -1,0 +1,22 @@
+[Unit]
+Description=N0JCG Winlink protocol phase watchdog
+After=n0jcg-winlink-rms.service n0jcg-winlink-modem.service
+Wants=n0jcg-winlink-rms.service n0jcg-winlink-modem.service
+
+[Service]
+Type=simple
+User=root
+Group=n0jcg
+WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
+Environment=PYTHONPATH=/home/n0jcg/sdrdev/N0JCG-ROC/src
+Environment=WINLINK_AUTO_RECOVER=0
+ExecStart=/usr/bin/python3 /home/n0jcg/sdrdev/N0JCG-ROC/tools/winlink_protocol_watchdog.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/lib/n0jcg-roc
+
+[Install]
+WantedBy=multi-user.target
