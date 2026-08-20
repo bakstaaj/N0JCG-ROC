@@ -17,6 +17,7 @@ import time
 from n0jcg_roc.winlink import summarize_rf_diagnostics
 
 STATE = Path(os.environ.get("WINLINK_PROTOCOL_STATE", "/var/lib/n0jcg-roc/winlink-protocol-health.json"))
+CMS_LOG = Path(os.environ.get("WINLINK_CMS_LOG", "/var/lib/n0jcg-winlink/CMSAccessLatest.log"))
 INTERVAL = max(5, int(os.environ.get("WINLINK_WATCHDOG_INTERVAL", "15")))
 STALE_SECONDS = max(60, int(os.environ.get("WINLINK_STALE_SECONDS", "240")))
 
@@ -30,6 +31,22 @@ def journal(service: str) -> list[str]:
     except (OSError, subprocess.TimeoutExpired):
         return []
     return result.stdout.splitlines() if result.returncode == 0 else []
+
+
+def cms_log_lines() -> list[str]:
+    """Adapt LinBPQ's compact CMSAccess log to the journal parser format."""
+    try:
+        lines = CMS_LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-1200:]
+    except OSError:
+        return []
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    adapted = []
+    for line in lines:
+        fields = line.split(maxsplit=3)
+        if len(fields) < 4 or ":" not in fields[0]:
+            continue
+        adapted.append(f"{today}T{fields[0]}+00:00 bpq bpq: {fields[3]}")
+    return adapted
 
 
 def completed_session_after_last_event(lines: list[str], last_event: str | None) -> bool:
@@ -63,7 +80,7 @@ def main() -> None:
     last_recovery = 0.0
     while True:
         now = datetime.now(timezone.utc)
-        rms_lines = journal("n0jcg-winlink-rms.service")
+        rms_lines = journal("n0jcg-winlink-rms.service") + cms_log_lines()
         modem_lines = journal("n0jcg-winlink-modem.service")
         diagnostics = summarize_rf_diagnostics(rms_lines, modem_lines, now)
         last_event = diagnostics.get("last_event_utc")
