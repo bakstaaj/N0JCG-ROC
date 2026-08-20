@@ -363,10 +363,10 @@ function showWinlink(gateway) {
   });
   document.querySelector("#winlink-updated").textContent = `Updated ${new Date().toLocaleTimeString()}`;
   showWinlinkStatistics(winlink.statistics_24h || {});
-  showWinlinkReliability(winlink.reliability || {});
+  showWinlinkReliability(winlink.reliability || {}, winlink.rf_diagnostics || {});
 }
 
-function showWinlinkReliability(reliability) {
+function showWinlinkReliability(reliability, diagnostic = {}) {
   const state = document.querySelector("#winlink-reliability-state");
   const labels = {healthy: "Healthy", warning: "Needs attention", fault: "Service fault"};
   state.textContent = labels[reliability.state] || "Unknown";
@@ -382,6 +382,21 @@ function showWinlinkReliability(reliability) {
   document.querySelector("#winlink-cms-last-event").textContent = cmsEvent
     ? `${cmsEvent.successful ? "Last connected" : "Last attempt failed"} · ${formatTimestamp(cmsEvent.timestamp_utc)}`
     : "No CMS event in 24 hours";
+  const phaseLabels = {
+    idle: "Idle",
+    connected: "Connected",
+    cms_session: "CMS session",
+    secure_login: "Secure login",
+    mailbox_request: "Mailbox request",
+    mailbox_index_generation: "Mailbox index generated",
+    index_delivery: "Index delivery",
+    client_acknowledgement: "Awaiting client acknowledgement",
+    mailbox_transfer: "Mailbox transfer",
+    disconnected: "Disconnected",
+  };
+  document.querySelector("#winlink-rf-phase").textContent = phaseLabels[diagnostic.phase] || "Unknown";
+  document.querySelector("#winlink-rf-finding").textContent = diagnostic.finding || "No protocol finding available.";
+  document.querySelector("#winlink-rf-next-action").textContent = diagnostic.next_action || "Collect a bounded RF capture for the next session.";
 }
 
 function showWinlinkStatistics(statistics) {
@@ -509,6 +524,7 @@ function initWinlinkSessionModal() {
 
 let operatorCsrfToken = "";
 let adminReportSettingsLoaded = false;
+let aprsAlertSettingsLoaded = false;
 let wifiNetworks = [];
 let wifiBusy = false;
 let ethernetBusy = false;
@@ -789,6 +805,81 @@ function setAdminReportLocked(locked) {
   }
 }
 
+function setAprsAlertLocked(locked) {
+  const form = document.querySelector("#aprs-alert-settings-form");
+  if (!form) return;
+  form.elements.enabled.disabled = locked;
+  form.elements.recipient.disabled = locked;
+  form.querySelector("button[type='submit']").disabled = locked;
+  document.querySelector("#aprs-alert-send-test").disabled = locked;
+  if (locked) {
+    aprsAlertSettingsLoaded = false;
+    form.querySelector("output").textContent = "Unlock Protected operator controls to configure alerts.";
+  }
+}
+
+function showAprsAlertSettings(payload) {
+  const form = document.querySelector("#aprs-alert-settings-form");
+  if (!form) return;
+  form.elements.enabled.checked = Boolean(payload.enabled);
+  form.elements.recipient.value = payload.recipient || "";
+  document.querySelector("#aprs-alert-sender").textContent = payload.sender || "roc@n0jcg.com";
+  setAprsAlertLocked(false);
+  document.querySelector("#aprs-alert-send-test").disabled = !payload.enabled;
+}
+
+function setCwopLocked(locked) {
+  const form = document.querySelector("#cwop-settings-form");
+  if (!form) return;
+  [...form.elements].forEach((element) => { element.disabled = locked; });
+  form.querySelector("output").textContent = locked ? "Unlock Protected operator controls to configure CWOP." : "CWOP settings are operator-protected.";
+}
+
+function showCwopSettings(payload) {
+  const form = document.querySelector("#cwop-settings-form");
+  if (!form) return;
+  form.elements.enabled.checked = Boolean(payload.enabled);
+  form.elements.station_id.value = payload.station_id || "";
+  form.elements.latitude.value = payload.latitude || "";
+  form.elements.longitude.value = payload.longitude || "";
+  form.elements.interval_seconds.value = payload.interval_seconds || 300;
+  const state = document.querySelector("#cwop-configured");
+  state.textContent = payload.configured ? (payload.enabled ? "Enabled" : "Configured") : "Not configured";
+  state.className = `application-state application-state--${payload.configured ? (payload.enabled ? "online" : "advisory") : "offline"}`;
+  setCwopLocked(false);
+}
+
+async function loadCwopSettings() {
+  const response = await fetch("/api/weather/cwop/settings", {cache: "no-store", credentials: "same-origin"});
+  if (!response.ok) throw new Error(response.status === 401 ? "Operator login required" : "CWOP settings request failed");
+  const payload = await response.json();
+  showCwopSettings(payload);
+  return payload;
+}
+
+function initCwopSettings() {
+  const form = document.querySelector("#cwop-settings-form");
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const output = form.querySelector("output");
+    try {
+      const response = await fetch("/api/weather/cwop/settings", {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken}, body: JSON.stringify({enabled: form.elements.enabled.checked, station_id: form.elements.station_id.value.trim(), latitude: form.elements.latitude.value, longitude: form.elements.longitude.value, interval_seconds: Number(form.elements.interval_seconds.value)})});
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "CWOP settings could not be saved");
+      showCwopSettings(payload);
+      output.textContent = payload.enabled ? "CWOP weather upload enabled." : "CWOP weather upload disabled.";
+    } catch (error) { output.textContent = error.message; }
+  });
+}
+
+async function loadAprsAlertSettings() {
+  const response = await fetch("/api/aprs/alerts/settings", {cache: "no-store", credentials: "same-origin"});
+  if (!response.ok) throw new Error(response.status === 401 ? "Operator login required" : "APRS alert settings request failed");
+  const payload = await response.json();
+  showAprsAlertSettings(payload);
+  return payload;
+}
+
 function showAdminReportSettings(payload) {
   const form = document.querySelector("#admin-report-settings-form");
   if (!form) return;
@@ -830,6 +921,8 @@ function showOperatorStatus(status) {
     telemetryReset.title = status.authenticated ? "Delete all stored trend history" : "Operator login required to reset trends";
   }
   setAdminReportLocked(!status.authenticated);
+  setAprsAlertLocked(!status.authenticated);
+  setCwopLocked(!status.authenticated);
   setWifiLocked(!status.authenticated);
   setEthernetLocked(!status.authenticated);
   setup.hidden = status.configured;
@@ -870,6 +963,11 @@ async function refreshOperatorStatus() {
   if (status.authenticated && !adminReportSettingsLoaded) {
     await loadAdminReportSettings();
   }
+  if (status.authenticated && !aprsAlertSettingsLoaded) {
+    await loadAprsAlertSettings();
+    aprsAlertSettingsLoaded = true;
+  }
+  if (status.authenticated) await loadCwopSettings().catch(() => {});
   if (status.authenticated && !ethernetSettingsLoaded) {
     await loadEthernetStatus();
   }
@@ -953,6 +1051,7 @@ function initOperatorControls() {
     });
     operatorCsrfToken = "";
     adminReportSettingsLoaded = false;
+    aprsAlertSettingsLoaded = false;
     operatorMessage(response.ok ? "Operator session locked." : "Sign out failed.", !response.ok);
     await refreshOperatorStatus();
   });
@@ -1065,6 +1164,38 @@ function initAdminReportSettings() {
   setAdminReportLocked(true);
 }
 
+function initAprsAlertSettings() {
+  const form = document.querySelector("#aprs-alert-settings-form");
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const output = form.querySelector("output");
+    const button = form.querySelector("button[type='submit']");
+    button.disabled = true;
+    output.textContent = "Saving alert settings…";
+    try {
+      const response = await fetch("/api/aprs/alerts/settings", {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken}, body: JSON.stringify({enabled: form.elements.enabled.checked, recipient: form.elements.recipient.value.trim()})});
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Alert settings could not be saved");
+      showAprsAlertSettings(payload);
+      output.textContent = payload.enabled ? "APRS pipeline alerts enabled." : "APRS pipeline alerts disabled.";
+    } catch (error) { output.textContent = error.message; }
+    finally { button.disabled = !operatorCsrfToken; }
+  });
+  document.querySelector("#aprs-alert-send-test")?.addEventListener("click", async () => {
+    const output = form.querySelector("output");
+    const button = document.querySelector("#aprs-alert-send-test");
+    button.disabled = true;
+    output.textContent = "Sending test alert…";
+    try {
+      const response = await fetch("/api/aprs/alerts/send-test", {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken}, body: "{}"});
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Test alert failed");
+      output.textContent = "Test alert submitted.";
+    } catch (error) { output.textContent = error.message; }
+    finally { button.disabled = !operatorCsrfToken; }
+  });
+}
+
 function showSystem(system) {
   document.querySelector("#metric-host").textContent = system.host.hostname;
   document.querySelector("#metric-platform").textContent = `${system.host.operating_system} ${system.host.kernel} · ${system.host.architecture}`;
@@ -1162,6 +1293,40 @@ function showAprs(aprs) {
   const detail = document.querySelector("#metric-aprs-detail");
   if (detail && pipeline.last_rf_packet_timestamp_utc) {
     detail.title = `Last RF decode: ${pipeline.last_rf_packet_timestamp_utc}; pipeline activity: ${pipeline.last_pipeline_activity_utc || "unknown"}`;
+  }
+  const quality = aprs.quality || {};
+  const qualityFrames = document.querySelector("#aprs-quality-frames");
+  if (qualityFrames) qualityFrames.textContent = `${quality.rf_frames ?? 0} RF`;
+  const qualityState = document.querySelector("#aprs-quality-state");
+  if (qualityState) qualityState.textContent = `${quality.unique_stations ?? 0} stations`;
+  const qualityDetail = document.querySelector("#aprs-quality-detail");
+  if (qualityDetail) qualityDetail.textContent = `${quality.duplicate_rate_percent ?? 0}% duplicates · avg decode ${quality.decode_confidence?.average ?? "—"}`;
+  const isHealth = aprs.aprs_is || {};
+  const isState = document.querySelector("#aprs-is-state");
+  if (isState) isState.textContent = isHealth.state || "Unknown";
+  const isServer = document.querySelector("#aprs-is-server");
+  if (isServer) isServer.textContent = isHealth.server || "Not connected";
+  const isDetail = document.querySelector("#aprs-is-detail");
+  if (isDetail) isDetail.textContent = `${isHealth.authentication || "unknown"} · ${isHealth.reconnect_count ?? 0} connection${isHealth.reconnect_count === 1 ? "" : "s"} · last upload ${isHealth.last_successful_upload_utc || "—"}`;
+  const history = aprs.rf_history || {};
+  const historyPoints = document.querySelector("#aprs-rf-history-points");
+  if (historyPoints) historyPoints.textContent = `${history.last_24h_rf_frames ?? 0} RF frames`;
+  const historyState = document.querySelector("#aprs-rf-history-state");
+  if (historyState) historyState.textContent = `${history.last_24h_stations ?? 0} stations`;
+  const historyDetail = document.querySelector("#aprs-rf-history-detail");
+  if (historyDetail) historyDetail.textContent = `Latest hour: ${history.latest_hour_rf_frames ?? 0} frames · avg confidence ${history.latest_hour_average_confidence ?? "—"} · history coverage ${history.coverage_hours ?? 0}/168 hours`;
+  const historyChart = document.querySelector("#aprs-rf-history-chart");
+  if (historyChart) {
+    historyChart.replaceChildren();
+    const points = (history.points || []).slice(-24);
+    const maximum = Math.max(1, ...points.map((point) => Number(point.rf_frames || 0)));
+    points.forEach((point) => {
+      const bar = document.createElement("span");
+      bar.className = "aprs-rf-history-bar";
+      bar.style.height = `${Math.max(4, (Number(point.rf_frames || 0) / maximum) * 100)}%`;
+      bar.title = `${point.hour_utc}: ${point.rf_frames || 0} frames`;
+      historyChart.appendChild(bar);
+    });
   }
 }
 
@@ -1599,6 +1764,9 @@ function showWeather(status) {
     return;
   }
   const fields = status.observation.fields || {};
+  const cwop = status.cwop || {};
+  document.querySelector("#weather-cwop").textContent = cwop.enabled && cwop.configured ? "Enabled" : "Disabled";
+  document.querySelector("#weather-cwop-detail").textContent = cwop.configured ? `${cwop.station_id} · every ${cwop.interval_seconds}s` : "Operator configuration required";
   const observed = new Date(status.observation.received_utc);
   const observedLabel = Number.isNaN(observed.getTime()) ? status.observation.received_utc : observed.toLocaleString();
   const value = (number, digits = 1) => number == null ? "—" : Number(number).toFixed(digits);
@@ -1747,6 +1915,8 @@ async function start() {
   initWinlinkSessionModal();
   initOperatorControls();
   initAdminReportSettings();
+  initAprsAlertSettings();
+  initCwopSettings();
   initWifiSettings();
   initEthernetSettings();
   try {

@@ -27,6 +27,123 @@ KISS_SESSION_PATTERN = re.compile(
     r"^KISS Session Stats Port \d+ (?P<caller>\S+) (?P<gateway>\S+) "
     r"(?P<duration>\d+) secs Bytes Sent (?P<sent>\d+) .*? Bytes Received (?P<received>\d+) "
 )
+PROTOCOL_TOKEN_PATTERN = re.compile(r"(?<![A-Z0-9])(F>|FW|PR|PQ|FF|PM|FC|FS)(?![A-Z0-9])", re.IGNORECASE)
+
+
+def summarize_rf_diagnostics(
+    rms_lines: list[str],
+    modem_lines: list[str],
+    now: datetime | None = None,
+) -> dict:
+    """Describe the last packet-session phase without exposing mailbox data.
+
+    LinBPQ/CMS and Dire Wolf journal streams are intentionally compared as two
+    separate observations.  This lets the UI distinguish a server-generated
+    mailbox index from an index actually observed on the RF/KISS receive path.
+    """
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    events: list[dict] = []
+
+    def collect(lines: list[str], source: str) -> None:
+        for raw in lines:
+            match = JOURNAL_PATTERN.match(raw.strip())
+            if not match:
+                continue
+            stamp = _utc_iso(match.group("timestamp"))
+            if not stamp:
+                continue
+            message = match.group("message")
+            lowered = message.lower()
+            tokens = {token.upper() for token in PROTOCOL_TOKEN_PATTERN.findall(message)}
+            if "connected to cms" in lowered:
+                tokens.add("CONNECTED")
+            if "disconnected" in lowered or "connection lost" in lowered:
+                tokens.add("DISCONNECTED")
+            if tokens:
+                events.append({"timestamp_utc": stamp, "source": source, "tokens": tokens})
+
+    collect(rms_lines, "rms")
+    collect(modem_lines, "modem")
+    events.sort(key=lambda item: item["timestamp_utc"])
+    connection_indexes = [
+        index for index, event in enumerate(events) if "CONNECTED" in event["tokens"]
+    ]
+    if connection_indexes:
+        events = events[connection_indexes[-1]:]
+    else:
+        cutoff = current - timedelta(minutes=30)
+        events = [
+            event for event in events
+            if datetime.fromisoformat(event["timestamp_utc"].replace("Z", "+00:00")) >= cutoff
+        ]
+
+    def observed(token: str, source: str | None = None) -> bool:
+        return any(token in event["tokens"] and (source is None or event["source"] == source) for event in events)
+
+    server_index = observed("F>", "rms")
+    rf_index = observed("F>", "modem")
+    client_ack = observed("FS")
+    secure_login = observed("FW") and observed("PR")
+    mailbox_records = observed("FC", "rms")
+    disconnected = observed("DISCONNECTED")
+    last_event = events[-1] if events else None
+    last_timestamp = last_event["timestamp_utc"] if last_event else None
+
+    if not events:
+        phase = "idle"
+        finding = "No recent packet-session evidence is available."
+        next_action = "Start one RF session, then refresh diagnostics."
+    elif client_ack:
+        phase = "mailbox_transfer"
+        finding = "The client acknowledged the mailbox index and the session can transfer messages."
+        next_action = "If transfer still stalls, inspect message-level RF retries and audio levels."
+    elif server_index and not rf_index:
+        phase = "index_delivery"
+        finding = "RMS generated the mailbox index, but Dire Wolf did not observe the F> index frame on RF."
+        next_action = "Capture the KISS/Dire Wolf downlink while retrying; verify LinBPQ-to-modem TX and the client receive audio."
+    elif rf_index and not client_ack:
+        phase = "client_acknowledgement"
+        finding = "The mailbox index reached the RF modem, but the client did not return FS."
+        next_action = "Verify client receive decoding and retry with the same gateway and 1200-AFSK settings."
+    elif mailbox_records:
+        phase = "mailbox_index_generation"
+        finding = "The secure session reached mailbox-index generation; the index delivery step is still pending."
+        next_action = "Keep the RF capture running through the F> frame and compare RMS and Dire Wolf timestamps."
+    elif secure_login:
+        phase = "secure_login"
+        finding = "Secure login completed, but mailbox records have not been observed yet."
+        next_action = "Wait for FF/FC, then verify the client remains connected long enough to receive F>."
+    elif observed("FF"):
+        phase = "mailbox_request"
+        finding = "The client requested mailbox data; the RMS has not produced FC records in the observed window."
+        next_action = "Check the RMS mailbox store and CMS session while preserving the RF capture."
+    elif observed("PQ"):
+        phase = "cms_session"
+        finding = "The packet session reached the CMS prompt but has not completed the client login sequence."
+        next_action = "Verify the client sends FW/PR and keep the receive path open."
+    elif disconnected:
+        phase = "disconnected"
+        finding = "The packet session disconnected before the mailbox exchange completed."
+        next_action = "Retry once with a synchronized RF capture; do not change frequency until the phase differs."
+    else:
+        phase = "connected"
+        finding = "A packet session is connected, but no recognized mailbox phase was recorded."
+        next_action = "Collect a bounded Dire Wolf and LinBPQ journal capture for protocol comparison."
+
+    return {
+        "phase": phase,
+        "finding": finding,
+        "next_action": next_action,
+        "last_event_utc": last_timestamp,
+        "server_generated_index": server_index,
+        "rf_index_observed": rf_index,
+        "client_acknowledged_index": client_ack,
+        "secure_login_observed": secure_login,
+        "mailbox_records_observed": mailbox_records,
+        "disconnected": disconnected,
+        "evidence_events": len(events),
+        "privacy": "Protocol phases only; mailbox contents and credentials are excluded.",
+    }
 
 
 def summarize_mail_index(path: Path = MESSAGE_INDEX_PATH) -> dict:
@@ -431,6 +548,9 @@ def collect_winlink_status(
     reliability = summarize_gateway_reliability(
         journal.splitlines(), modem_journal.splitlines(), rms_service, modem_service,
     )
+    rf_diagnostics = summarize_rf_diagnostics(
+        journal.splitlines(), modem_journal.splitlines(),
+    )
     cached = _load_cache(cache_path)
     cached_milestones = cached.get("commissioning", {})
     merged_milestones = {
@@ -480,6 +600,7 @@ def collect_winlink_status(
         "session_count_observed": len(sessions),
         "statistics_24h": statistics_24h,
         "reliability": reliability,
+        "rf_diagnostics": rf_diagnostics,
         "queues": {
             "local_message_store": stored_messages,
             "pending": message_counts["pending"],

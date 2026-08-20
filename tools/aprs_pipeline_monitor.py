@@ -6,6 +6,10 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from n0jcg_roc.aprs_alerts import load_alert_settings, send_alert_email
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "runtime" / "aprs"
@@ -48,10 +52,26 @@ def check() -> dict:
     except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError):
         pass
     rf_age = None if last_rf is None else max(0, int(now - last_rf))
+    rtl_errors = []
+    try:
+        rtl_text = (RUNTIME / "rtl.log").read_text(encoding="utf-8", errors="replace")
+        for marker in ("usb_claim_interface error", "Failed to open rtlsdr device", "No supported devices found"):
+            if any(marker in line for line in rtl_text.splitlines()[-20:]):
+                rtl_errors.append(marker)
+    except OSError:
+        pass
+    igate_failures = 0
+    try:
+        journal_text = result.stdout if 'result' in locals() else ""
+        igate_failures = len([line for line in journal_text.splitlines() if "Connect to IGate server" in line and "failed" in line.lower()])
+    except Exception:
+        pass
     if not active():
-        state, summary = "fault", "RTL receiver process is not running"
+        state, summary = "fault", "RTL receiver process is not running (possible USB disconnect or Dire Wolf exit)"
     elif age is not None and age > STALE:
         state, summary = "fault", f"audio pipeline has not advanced for {age} seconds"
+    elif rtl_errors:
+        state, summary = "fault", f"RTL device error: {rtl_errors[-1]}"
     elif rf_age is None or rf_age > RF_QUIET:
         state, summary = "degraded", "receiver and audio pipeline are active, but no recent RF decode was recorded"
     else:
@@ -62,7 +82,19 @@ def check() -> dict:
         "checked_at_utc": datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "pipeline_age_seconds": age,
         "rf_age_seconds": rf_age,
+        "rtl_errors": rtl_errors,
+        "aprs_is_connection_failures": igate_failures,
     }
+
+
+def send_alert(result: dict) -> None:
+    settings = load_alert_settings()
+    if not settings["enabled"] or not settings["recipient"]:
+        return
+    delivery = send_alert_email(settings["recipient"], f"N0JCG APRS pipeline {result['state']}",
+                                f"{result['summary']}\nChecked: {result['checked_at_utc']}\n")
+    if not delivery["ok"]:
+        subprocess.run(["logger", "-t", "n0jcg-aprs-monitor", "email alert failed"], check=False)
 
 
 def main() -> None:
@@ -76,6 +108,7 @@ def main() -> None:
                 subprocess.run(["logger", "-t", "n0jcg-aprs-monitor", f"{result['state']}: {result['summary']}"], check=False)
             except OSError:
                 pass
+            send_alert(result)
             previous = result["state"]
         time.sleep(60)
 

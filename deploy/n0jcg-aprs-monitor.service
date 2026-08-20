@@ -10,6 +10,10 @@ Group=n0jcg
 WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
 Environment=APRS_RTL_SERIAL=00014439
 Environment=APRS_PIPELINE_STALE_SECONDS=180
+Environment=APRS_RF_QUIET_SECONDS=21600
+EnvironmentFile=-/etc/n0jcg/admin-report.env
+# Optional: set APRS_ALERT_EMAIL in an operator drop-in to enable mail alerts.
+# Environment=APRS_ALERT_EMAIL=operator@example.com
 ExecStart=/usr/bin/python3 /home/n0jcg/sdrdev/N0JCG-ROC/tools/aprs_pipeline_monitor.py
 Restart=always
 RestartSec=10

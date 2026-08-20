@@ -1,0 +1,29 @@
+[Unit]
+Description=N0JCG CWOP weather uploader (APRS-IS only)
+After=network-online.target n0jcg-weather.service
+Wants=network-online.target
+Requires=n0jcg-weather.service
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
+EnvironmentFile=-/etc/n0jcg/weather.env
+Environment=CWOP_INTERVAL_SECONDS=300
+Environment=CWOP_APRS_SERVER=cwop.aprs.net
+Environment=CWOP_APRS_PORT=14580
+Environment=N0JCG_WEATHER_LATEST=/tmp/n0jcg-roc/weather/latest.json
+Environment=CWOP_STATE_PATH=/var/lib/n0jcg-roc/cwop-weather.json
+Environment=ROC_API_BASE=http://127.0.0.1
+Environment=CWOP_SETTINGS_PATH=/var/lib/n0jcg-roc/cwop.json
+ExecStart=/usr/bin/python3 /usr/local/libexec/n0jcg-cwop-weather.py
+Restart=always
+RestartSec=30
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/n0jcg-roc
+[Install]
+WantedBy=multi-user.target

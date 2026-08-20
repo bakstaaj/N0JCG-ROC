@@ -45,17 +45,35 @@ from n0jcg_roc.licensing import (  # noqa: E402
 from n0jcg_roc.station_settings import load_station_settings  # noqa: E402
 from n0jcg_roc.telemetry import read_telemetry, record_telemetry, reset_telemetry  # noqa: E402
 from n0jcg_roc.weather import normalize_gateway_live_data, normalize_observation  # noqa: E402
+from n0jcg_roc.cwop_settings import load_cwop_settings, save_cwop_settings  # noqa: E402
 from n0jcg_roc.winlink import (  # noqa: E402
     merge_sessions,
     parse_linbpq_journal,
     parse_runtime_config,
     summarize_mail_index,
     summarize_gateway_reliability,
+    summarize_rf_diagnostics,
     summarize_sessions,
 )
 
 
 class SafetyTests(unittest.TestCase):
+    def test_cwop_settings_are_validated_and_persisted(self) -> None:
+        with TemporaryDirectory() as temporary:
+            path = Path(temporary) / "cwop.json"
+            settings = save_cwop_settings(path, {
+                "enabled": True,
+                "station_id": "cw1234",
+                "latitude": "38.800833",
+                "longitude": "-105.200167",
+                "interval_seconds": 60,
+            })
+            self.assertTrue(settings["enabled"])
+            self.assertTrue(settings["configured"])
+            self.assertEqual(settings["station_id"], "CW1234")
+            self.assertEqual(settings["interval_seconds"], 300)
+            self.assertEqual(load_cwop_settings(path)["longitude"], "-105.200167")
+
     def test_operational_applications_are_direct_links_not_roc_proxies(self) -> None:
         server = (ROOT / "src" / "n0jcg_roc" / "server.py").read_text(encoding="utf-8")
         browser = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
@@ -1188,6 +1206,29 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(summary["modem_faults"], 1)
         self.assertTrue(summary["last_cms_event"]["successful"])
         self.assertEqual(summary["rms_restart_count"], 1)
+
+    def test_winlink_rf_diagnostics_distinguishes_server_index_from_rf_delivery(self) -> None:
+        rms_lines = [
+            "2026-08-20T02:46:47+00:00 roc LINBPQ[1]: N0JCG-3 Connected to CMS",
+            "2026-08-20T02:48:17+00:00 roc LINBPQ[1]: FW",
+            "2026-08-20T02:48:17+00:00 roc LINBPQ[1]: PR 00415137",
+            "2026-08-20T02:48:20+00:00 roc LINBPQ[1]: FC EM ABC123 400 300 0",
+            "2026-08-20T02:48:22+00:00 roc LINBPQ[1]: F> 4C",
+            "2026-08-20T02:50:23+00:00 roc LINBPQ[1]: Disconnected",
+        ]
+        modem_lines = [
+            "2026-08-20T02:49:00+00:00 roc direwolf[1]: (I cmd) FC EM ABC123 400 300 0",
+            "2026-08-20T02:50:00+00:00 roc direwolf[1]: (RR cmd, n(r)=2, p=1)",
+        ]
+        diagnostic = summarize_rf_diagnostics(
+            rms_lines,
+            modem_lines,
+            datetime(2026, 8, 20, 3, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(diagnostic["phase"], "index_delivery")
+        self.assertTrue(diagnostic["server_generated_index"])
+        self.assertFalse(diagnostic["rf_index_observed"])
+        self.assertFalse(diagnostic["client_acknowledged_index"])
 
     def test_winlink_session_history_api_is_paginated_and_private(self) -> None:
         status, media_type, body = self.get("/api/winlink/sessions?page=1&sort=newest&result=all")

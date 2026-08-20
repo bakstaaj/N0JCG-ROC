@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.8 - 2026-08-19
+
+### CWOP weather upload
+
+- Added an operator-protected CWOP configuration panel for station ID,
+  coordinates, enable state, and upload interval.
+- Added the APRS-IS-only CWOP uploader and service with fail-closed defaults.
+- Added CWOP status to the weather monitor and documented verification through
+  FindU/CWOP.
+
 ## 0.1.7 - 2026-08-18
 
 ### APRS telemetry
@@ -95,3 +105,12 @@ First packaged N0JCG Gateway release.
 - Removed embedded copies of the Air Traffic Center and Scanner applications.
 - Added externally safe configuration examples, a branded End User Guide, and
   reproducible ZIP/tar.gz release packaging with SHA-256 checksums.
+## APRS operations observability
+
+- Added packet-quality metrics for RF frames, unique stations, duplicates, and
+  Dire Wolf decode-confidence samples.
+- Added APRS-IS connection/authentication evidence and bounded hourly RF survey
+  history to the APRS API and dashboard.
+- Expanded the receive-only pipeline watchdog to report RTL/USB errors and
+  optionally send state-transition email alerts.
+- Added manifest-validated APRS configuration export/import tooling.

@@ -27,7 +27,10 @@ from .admin_report import (
     save_report_settings,
 )
 from .aprs_map import collect_aprs_map, load_aprsfi_settings, save_aprsfi_settings
+from .aprs_alerts import DEFAULT_PATH as DEFAULT_APRS_ALERT_SETTINGS_PATH, load_alert_settings, save_alert_settings, send_alert_email
+from .aprs_observability import aprs_is_health, packet_quality, update_rf_history
 from .config import load_station_config, transmit_interlock
+from .cwop_settings import load_cwop_settings, save_cwop_settings
 from .inventory import SERVICES
 from .licensing import LicenseClient, LicenseError, RocTrialController
 from .operator_controls import (
@@ -66,6 +69,7 @@ DEFAULT_APRSFI_CACHE_PATH = Path(
 DEFAULT_STATION_SETTINGS_PATH = Path(
     os.environ.get("ROC_STATION_SETTINGS", "/var/lib/n0jcg-roc/station.json")
 )
+DEFAULT_CWOP_SETTINGS_PATH = Path(os.environ.get("ROC_CWOP_SETTINGS", "/var/lib/n0jcg-roc/cwop.json"))
 DEFAULT_OPERATOR_AUDIT_PATH = Path("/var/lib/n0jcg-roc/operator-audit.jsonl")
 DEFAULT_OPERATOR_SOCKET_PATH = Path("/run/n0jcg-operator-helper/control.sock")
 DEFAULT_MAINTENANCE_PATH = Path("/var/lib/n0jcg-roc/winlink-maintenance")
@@ -77,6 +81,7 @@ APRS_DIGI_SURVEY_HOURS = int(os.environ.get("APRS_DIGI_SURVEY_HOURS", "72"))
 APRS_PIPELINE_STALE_SECONDS = int(os.environ.get("APRS_PIPELINE_STALE_SECONDS", "180"))
 APRS_RF_QUIET_SECONDS = int(os.environ.get("APRS_RF_QUIET_SECONDS", "21600"))
 APRS_PIPELINE_STATE_PATH = PROJECT_ROOT / "runtime" / "aprs" / "pipeline-health.json"
+APRS_RF_HISTORY_PATH = PROJECT_ROOT / "runtime" / "aprs" / "rf-history.json"
 
 
 def collect_telemetry_sample(application_settings_path: Path) -> dict:
@@ -267,6 +272,27 @@ def collect_aprs_status() -> dict:
     all_frames = parse_aprs_frames(lines)
     active = _aprs_receiver_process_active()
     pipeline = collect_aprs_pipeline_health(records)
+    quality = packet_quality(records)
+    journal_lines = []
+    try:
+        journal = subprocess.run(
+            ["journalctl", f"--unit={APRS_JOURNAL_UNIT}", "--no-pager", "--lines=200"],
+            capture_output=True, check=False, text=True, timeout=8,
+        )
+        journal_lines = journal.stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # Dire Wolf's tee output is the authoritative APRS-IS evidence on the
+    # receive service; systemd may not retain the older connection messages.
+    try:
+        journal_lines.extend(APRS_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()[-500:])
+    except OSError:
+        pass
+    is_health = aprs_is_health(records, journal_lines=journal_lines)
+    try:
+        rf_history = update_rf_history(APRS_RF_HISTORY_PATH, records)
+    except (OSError, ValueError, TypeError):
+        rf_history = {"hours": [], "points": [], "retention_hours": 168}
     return {
         "configured": True,
         "active": active,
@@ -277,6 +303,9 @@ def collect_aprs_status() -> dict:
         "last_packet_timestamp_utc": records[-1]["timestamp_utc"] if records else None,
         "packets": frames[-20:],
         "recent": lines[-20:],
+        "quality": quality,
+        "aprs_is": is_health,
+        "rf_history": rf_history,
     }
 
 
@@ -438,6 +467,19 @@ class RocRequestHandler(BaseHTTPRequestHandler):
         if route == "/api/aprs":
             self._json(collect_aprs_status())
             return
+        if route == "/api/aprs/quality":
+            self._json(collect_aprs_status().get("quality", {}))
+            return
+        if route == "/api/aprs/is-health":
+            self._json(collect_aprs_status().get("aprs_is", {}))
+            return
+        if route == "/api/aprs/rf-history":
+            self._json(collect_aprs_status().get("rf_history", {}))
+            return
+        if route == "/api/aprs/alerts/settings":
+            settings = load_alert_settings(self.server.aprs_alert_settings_path)
+            self._json({"enabled": settings["enabled"], "configured": bool(settings["recipient"]), "sender": settings["sender"], "recipient": settings["recipient"] if self._operator_session() else ""})
+            return
         if route == "/api/aprs/frames":
             self._json(collect_aprs_frame_page(urlparse(self.path).query))
             return
@@ -520,7 +562,15 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             ))
             return
         if route == "/api/weather":
-            self._json(read_weather_status())
+            status = read_weather_status()
+            status["cwop"] = load_cwop_settings(self.server.cwop_settings_path)
+            self._json(status)
+            return
+        if route == "/api/weather/cwop/settings":
+            if self._operator_session() is None:
+                self._json({"ok": False, "error": "operator login required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            self._json(load_cwop_settings(self.server.cwop_settings_path))
             return
         if route == "/api/applications":
             self._json(collect_application_status(self.server.application_settings_path))
@@ -676,6 +726,17 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             except (ValueError, TypeError, json.JSONDecodeError) as error:
                 self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
             return
+        if route == "/api/weather/cwop/settings":
+            if self._operator_session(require_csrf=True) is None:
+                self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            try:
+                settings = save_cwop_settings(self.server.cwop_settings_path, self._read_json(4096))
+                append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="cwop_settings", result="success", detail=f"enabled={settings['enabled']}")
+                self._json({"ok": True, **settings})
+            except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
         if route == "/api/telemetry/reset":
             if self._operator_session(require_csrf=True) is None:
                 self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
@@ -723,6 +784,25 @@ class RocRequestHandler(BaseHTTPRequestHandler):
                 self._json({"ok": True, **state})
             except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
                 self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if route == "/api/aprs/alerts/settings":
+            if self._operator_session(require_csrf=True) is None:
+                self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            try:
+                settings = save_alert_settings(self.server.aprs_alert_settings_path, self._read_json(4096))
+                append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="aprs_alert_settings", result="success", detail=f"enabled={settings['enabled']}")
+                self._json({"ok": True, "enabled": settings["enabled"], "configured": bool(settings["recipient"]), "sender": settings["sender"], "recipient": settings["recipient"]})
+            except (ValueError, TypeError, json.JSONDecodeError, OSError) as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+        if route == "/api/aprs/alerts/send-test":
+            if self._operator_session(require_csrf=True) is None:
+                self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            settings = load_alert_settings(self.server.aprs_alert_settings_path)
+            result = send_alert_email(settings["recipient"], "N0JCG APRS alert test", "This is a test alert from the N0JCG Radio Operations Center.") if settings["enabled"] else {"ok": False, "error": "APRS alerts are disabled"}
+            self._json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if route == "/api/admin-report/settings":
             if self._operator_session(require_csrf=True) is None:
@@ -870,6 +950,7 @@ class RocServer(ThreadingHTTPServer):
     aprsfi_settings_path: Path
     aprsfi_cache_path: Path
     station_settings_path: Path
+    cwop_settings_path: Path
     admin_report_settings_path: Path
     admin_report_state_path: Path
     admin_report_trigger_path: Path
@@ -901,7 +982,9 @@ def create_server(
     application_settings_path: Path = DEFAULT_APPLICATION_SETTINGS_PATH,
     aprsfi_settings_path: Path = DEFAULT_APRSFI_SETTINGS_PATH,
     aprsfi_cache_path: Path = DEFAULT_APRSFI_CACHE_PATH,
+    aprs_alert_settings_path: Path = DEFAULT_APRS_ALERT_SETTINGS_PATH,
     station_settings_path: Path = DEFAULT_STATION_SETTINGS_PATH,
+    cwop_settings_path: Path = DEFAULT_CWOP_SETTINGS_PATH,
     admin_report_settings_path: Path = DEFAULT_ADMIN_REPORT_SETTINGS_PATH,
     admin_report_state_path: Path = DEFAULT_ADMIN_REPORT_STATE_PATH,
     admin_report_trigger_path: Path = DEFAULT_ADMIN_REPORT_TRIGGER_PATH,
@@ -920,7 +1003,9 @@ def create_server(
     server.application_settings_path = application_settings_path
     server.aprsfi_settings_path = aprsfi_settings_path
     server.aprsfi_cache_path = aprsfi_cache_path
+    server.aprs_alert_settings_path = aprs_alert_settings_path
     server.station_settings_path = station_settings_path
+    server.cwop_settings_path = cwop_settings_path
     server.admin_report_settings_path = admin_report_settings_path
     server.admin_report_state_path = admin_report_state_path
     server.admin_report_trigger_path = admin_report_trigger_path

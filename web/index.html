@@ -150,6 +150,11 @@
             <p id="aprs-digi-survey-message" class="aprs-digi-survey-message">Waiting for locally decoded RF frames.</p>
             <div id="aprs-digi-survey-list" class="aprs-digi-survey-list"></div>
           </div>
+          <div class="aprs-ops-grid" aria-live="polite">
+            <article class="status-card"><div class="card-heading"><span>Packet quality</span><span id="aprs-quality-state" class="technical-label">Loading</span></div><strong id="aprs-quality-frames">—</strong><small id="aprs-quality-detail">RF frames · unique stations · duplicate rate</small></article>
+            <article class="status-card"><div class="card-heading"><span>APRS-IS health</span><span id="aprs-is-state" class="technical-label">Loading</span></div><strong id="aprs-is-server">—</strong><small id="aprs-is-detail">Connection and authentication evidence</small></article>
+            <article class="status-card aprs-rf-history-card"><div class="card-heading"><span>RF activity · last 24 hours</span><span id="aprs-rf-history-state" class="technical-label">Loading</span></div><strong id="aprs-rf-history-points">—</strong><small id="aprs-rf-history-detail">Frames and stations heard; loading hourly survey</small><div id="aprs-rf-history-chart" class="aprs-rf-history-chart" aria-label="Hourly APRS RF frame history"></div></article>
+          </div>
           </section>
 
         <section id="aprs-map-section" class="content-section">
@@ -241,6 +246,11 @@
               <div><span>CMS attempts failed</span><strong id="winlink-cms-failures">—</strong><small id="winlink-cms-last-event">No recent event</small></div>
               <div><span>Modem faults</span><strong id="winlink-modem-faults">—</strong><small>Recognized faults in 24 hours</small></div>
             </div>
+            <div class="winlink-rf-diagnostic" aria-live="polite">
+              <div><span>Last RF protocol phase</span><strong id="winlink-rf-phase">Checking</strong></div>
+              <p id="winlink-rf-finding">Waiting for a packet-session trace.</p>
+              <small id="winlink-rf-next-action">Protocol evidence will appear after the next RF session.</small>
+            </div>
             <p class="privacy-note">Operational events only. Message content and credentials are excluded.</p>
           </div>
         </section>
@@ -262,6 +272,7 @@
             <article class="weather-card"><span>Lightning today</span><strong id="weather-lightning">—</strong><small id="weather-lightning-detail">Waiting for WH57 sensor</small></article>
             <article class="weather-card"><span>Gateway indoor</span><strong id="weather-indoor">—</strong><small id="weather-indoor-detail">GW1100 sensor</small></article>
             <article class="weather-card"><span>Gateway</span><strong id="weather-gateway">Checking</strong><small id="weather-gateway-detail">192.168.68.131</small></article>
+            <article class="weather-card"><span>CWOP upload</span><strong id="weather-cwop">Disabled</strong><small id="weather-cwop-detail">Operator configuration required</small></article>
           </div>
         </section>
         </div>
@@ -348,6 +359,12 @@
               <div class="settings-fields settings-fields--key"><label>Station overview title<input name="overview_title" type="text" maxlength="120" autocomplete="off" required placeholder="N0JCG · Cripple Creek, Colorado"></label></div>
               <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save Station Overview</button><output aria-live="polite"></output></div>
             </form>
+            <form id="cwop-settings-form" class="settings-card settings-card--wide">
+              <div class="settings-card-header"><div><h3>CWOP weather upload</h3><small>Internet-only APRS weather upload; never keys a radio</small></div><div class="integration-controls"><span id="cwop-configured" class="application-state">Not configured</span><label class="switch-label"><input name="enabled" type="checkbox" disabled><span>Enabled</span></label></div></div>
+              <div class="settings-fields"><label>CWOP station ID<input name="station_id" type="text" maxlength="9" autocomplete="off" placeholder="N0JCG" disabled></label><label>Latitude<input name="latitude" type="number" step="0.000001" min="-90" max="90" disabled></label><label>Longitude<input name="longitude" type="number" step="0.000001" min="-180" max="180" disabled></label><label>Upload interval (seconds)<input name="interval_seconds" type="number" min="300" max="3600" step="60" value="300" disabled></label></div>
+              <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit" disabled>Save CWOP settings</button><output aria-live="polite">Unlock Protected operator controls to configure CWOP.</output></div>
+              <small class="settings-note">The ROC uses CWOP/APRS-IS with passcode -1 for this weather-only station. Confirm data at findu.com after enabling.</small>
+            </form>
             <form id="wifi-settings-form" class="settings-card settings-card--wide">
               <div class="settings-card-header">
                 <div><h3>ROC Wi-Fi connection</h3><small>Scan visible networks and configure wlp2s0 through guarded Netplan rollback</small></div>
@@ -413,6 +430,12 @@
               </div>
               <div class="settings-actions"><div class="settings-button-group"><button class="n0-button n0-button--primary" type="submit" disabled>Save report settings</button><button id="admin-report-send-now" class="n0-button n0-button--secondary" type="button" disabled>Send report now</button></div><output aria-live="polite">Unlock Protected operator controls to view or change these settings.</output></div>
               <small id="admin-report-delivery" class="settings-note">Reports are sent by the ROC through Cloudflare Email Sending.</small>
+            </form>
+            <form id="aprs-alert-settings-form" class="settings-card settings-card--wide">
+              <div class="settings-card-header"><div><h3>APRS pipeline alerts</h3><small>Notify when the receive pipeline changes state. Messages are sent from roc@n0jcg.com.</small></div><div class="integration-controls"><span id="aprs-alert-sender" class="application-state">roc@n0jcg.com</span><label class="switch-label"><input name="enabled" type="checkbox" disabled><span>Enabled</span></label></div></div>
+              <div class="settings-fields settings-fields--key"><label>Send alerts to<input name="recipient" type="email" maxlength="254" autocomplete="email" disabled placeholder="operator@example.com"></label></div>
+              <div class="settings-actions"><div class="settings-button-group"><button class="n0-button n0-button--primary" type="submit" disabled>Save APRS alert settings</button><button id="aprs-alert-send-test" class="n0-button n0-button--secondary" type="button" disabled>Send test alert</button></div><output aria-live="polite">Unlock Protected operator controls to configure alerts.</output></div>
+              <small class="settings-note">Alerts are sent on state transitions only; a persistent fault will not generate a message every minute.</small>
             </form>
           </div>
         </section>

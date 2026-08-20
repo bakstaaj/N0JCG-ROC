@@ -18,7 +18,7 @@ DIST = ROOT / "dist"
 PUBLICATIONS = ROOT / "docs" / "publications"
 EXCLUDED_PARTS = {".git", ".venv", ".pytest_cache", "__pycache__", "build", "dist", "runtime"}
 EXCLUDED_FILES = {".server.env", "station.toml"}
-EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
+EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".tgz"}
 
 
 def included_files() -> list[Path]:

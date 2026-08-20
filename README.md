@@ -5,14 +5,17 @@ station monitoring. Its browser dashboard brings APRS, Winlink RMS Packet,
 local weather, system health, and links to independently deployed N0JCG
 applications into one operator view.
 
-Version **0.1.7** is the current packaged release. It includes:
+Version **0.1.8** is the current packaged release. It includes:
 
 - an RTL-SDR APRS receiver and receive-only APRS-IS iGate path;
 - APRS frame history, station symbols, and an optional aprs.fi activity map;
+- APRS pipeline watchdog, packet-quality metrics, APRS-IS health, and bounded
+  RF survey history (see `docs/APRS_OPERATIONS.md`);
 - a 1200-baud Winlink RMS Packet gateway with LinBPQ/Dire Wolf integration;
 - an optional VARA FM Winlink channel under Wine, interlocked with Packet;
 - a LAN Winlink Post Office for Winlink Express;
 - Ecowitt GW1100/WS90 weather monitoring;
+- optional CWOP weather reporting through APRS-IS without RF transmission;
 - authenticated, audited operator controls without browser RF-test controls;
 - configurable periodic operator reports sent from `ROC@n0jcg.com`;
 - independent application links and read-only health summaries for N0JCG Air
@@ -22,7 +25,7 @@ Version **0.1.7** is the current packaged release. It includes:
 
 ## Documentation
 
-- [End User Guide](docs/N0JCG_Gateway_End_User_Guide_v0.1.1.md)
+- [End User Guide](docs/N0JCG_Gateway_End_User_Guide_v0.1.8.md)
 - [Winlink RMS commissioning](docs/WINLINK_RMS_COMMISSIONING.md)
 - [VARA FM commissioning](docs/VARA_FM_COMMISSIONING.md)
 - [Protected operator controls](docs/OPERATOR_CONTROLS.md)
@@ -57,6 +60,12 @@ cd /home/n0jcg/sdrdev/N0JCG-ROC
 The dashboard is then available at `http://ROC_IP/`. Configuration containing
 credentials belongs under `/etc/n0jcg/`; mutable application state belongs
 under `/var/lib/n0jcg-roc/`. Neither location is part of the release archive.
+
+CWOP is configured from the protected Configuration panel after operator login.
+Enter the CWOP station ID, coordinates, and interval, then enable the module;
+the uploader uses APRS-IS only and never transmits over RF. A newly installed
+ROC keeps the module installed but disabled until a complete configuration is
+saved.
 
 ## Interactive Wi-Fi setup
 
