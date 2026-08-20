@@ -53,7 +53,8 @@ def _weather_packet(observation: dict[str, object]) -> str:
     lon = observation.get("longitude") or os.environ.get("CWOP_LONGITUDE")
     if lat is None or lon is None:
         raise ValueError("set CWOP_LATITUDE and CWOP_LONGITUDE")
-    timestamp = datetime.now(timezone.utc).strftime("%d%H%M")
+    # Complete APRS weather reports require an explicit UTC timestamp suffix.
+    timestamp = datetime.now(timezone.utc).strftime("%d%H%Mz")
     wind_dir = int(round(_num(fields.get("wind_direction_deg")) or 0)) % 360
     wind_mph = int(round((_num(fields.get("wind_speed_mps")) or 0) * 2.236936))
     gust_mph = int(round((_num(fields.get("wind_gust_mps")) or 0) * 2.236936))

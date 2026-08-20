@@ -74,6 +74,10 @@ class SafetyTests(unittest.TestCase):
             self.assertEqual(settings["interval_seconds"], 300)
             self.assertEqual(load_cwop_settings(path)["longitude"], "-105.200167")
 
+    def test_cwop_weather_packet_uses_utc_timestamp_suffix(self) -> None:
+        source = (ROOT / "tools" / "cwop_weather_uploader.py").read_text(encoding="utf-8")
+        self.assertIn('strftime("%d%H%Mz")', source)
+
     def test_operational_applications_are_direct_links_not_roc_proxies(self) -> None:
         server = (ROOT / "src" / "n0jcg_roc" / "server.py").read_text(encoding="utf-8")
         browser = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
