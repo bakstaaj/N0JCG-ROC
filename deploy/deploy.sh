@@ -26,10 +26,16 @@ RSYNC_SSH="ssh -i ${ROC_IDENTITY_FILE} -o BatchMode=yes -o ConnectTimeout=8"
 listener="$(${SSH[@]} "${ROC_USER}@${ROC_HOST}" "ss -ltnH 'sport = :${ROC_PORT}' || true")"
 if [[ -n "${listener}" ]]; then "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" 'systemctl is-active --quiet n0jcg-roc.service' || { echo "FINAL: FAIL - port ${ROC_PORT} is owned by an unknown listener"; exit 1; }; fi
 if [[ "${MODE}" == check ]]; then echo 'FINAL: PASS - deployment preflight only; no files changed'; exit 0; fi
-[[ -n "${ROC_SUDO_PASS:-}" ]] || { echo 'FINAL: FAIL - set ROC_SUDO_PASS transiently for service restart'; exit 1; }
-if ! printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" 'sudo -S -p "" -k true' >/dev/null 2>&1; then
-  echo 'FINAL: FAIL - ROC_SUDO_PASS was rejected; no files were deployed'
-  exit 1
+check_sudo_password() {
+  printf '%s\n' "${ROC_SUDO_PASS:-}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" 'sudo -S -p "" -k true' >/dev/null 2>&1
+}
+if ! check_sudo_password; then
+  if [[ -t 0 ]]; then
+    printf 'ROC sudo password: ' >&2
+    IFS= read -r -s ROC_SUDO_PASS
+    printf '\n' >&2
+  fi
+  check_sudo_password || { echo 'FINAL: FAIL - ROC sudo password was rejected; no files were deployed' >&2; exit 1; }
 fi
 stage_dir="$(mktemp -d)"; trap 'rm -rf "${stage_dir}"' EXIT
 rsync -a --exclude=.git --exclude=.server.env --exclude=config/station.toml --exclude=__pycache__ --exclude=runtime "${PROJECT_DIR}/" "${stage_dir}/"
