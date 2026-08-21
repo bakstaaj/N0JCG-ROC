@@ -13,7 +13,11 @@ from typing import Any
 DEFAULT_TELEMETRY_PATH = Path(
     os.environ.get("ROC_TELEMETRY_DB", "/var/lib/n0jcg-roc/telemetry.sqlite3")
 )
-METRICS = ("cpu", "memory", "temperature", "aprsFrames", "aircraft", "voiceCalls", "vhfLocks", "uhfLocks")
+METRICS = (
+    "cpu", "memory", "temperature", "aprsFrames", "aircraft", "voiceCalls", "vhfLocks", "uhfLocks",
+    "weatherTemperature", "weatherHumidity", "weatherPressure", "weatherWind", "weatherRain",
+    "weatherSolar", "weatherLightning",
+)
 MIN_SAMPLE_INTERVAL_MS = 25_000
 DISPLAY_POINT_LIMIT = 600
 _LOCK = Lock()
@@ -35,10 +39,21 @@ def _connect(path: Path) -> sqlite3.Connection:
             aircraft REAL,
             voiceCalls REAL,
             vhfLocks REAL,
-            uhfLocks REAL
+            uhfLocks REAL,
+            weatherTemperature REAL,
+            weatherHumidity REAL,
+            weatherPressure REAL,
+            weatherWind REAL,
+            weatherRain REAL,
+            weatherSolar REAL,
+            weatherLightning REAL
         )
         """
     )
+    existing_columns = {row[1] for row in connection.execute("PRAGMA table_info(telemetry_samples)").fetchall()}
+    for metric in METRICS:
+        if metric not in existing_columns:
+            connection.execute(f"ALTER TABLE telemetry_samples ADD COLUMN {metric} REAL")
     connection.execute("CREATE INDEX IF NOT EXISTS telemetry_timestamp_idx ON telemetry_samples(timestamp)")
     return connection
 

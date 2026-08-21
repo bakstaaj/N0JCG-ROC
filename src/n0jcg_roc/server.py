@@ -92,6 +92,8 @@ def collect_telemetry_sample(application_settings_path: Path) -> dict:
     scanner = next((item for item in applications if item.get("id") == "scanner"), {})
     air_metrics = air_traffic.get("metrics") or {}
     scanner_metrics = scanner.get("metrics") or {}
+    weather = read_weather_status()
+    weather_fields = (weather.get("observation") or {}).get("fields", {}) if weather.get("available") else {}
     return {
         "timestamp": int(time.time() * 1000),
         "cpu": system.get("resources", {}).get("cpu", {}).get("utilization_percent"),
@@ -102,6 +104,13 @@ def collect_telemetry_sample(application_settings_path: Path) -> dict:
         "voiceCalls": scanner_metrics.get("voice_calls") if scanner.get("reachable") else None,
         "vhfLocks": scanner_metrics.get("vhf_locks") if scanner.get("reachable") else None,
         "uhfLocks": scanner_metrics.get("uhf_locks") if scanner.get("reachable") else None,
+        "weatherTemperature": weather_fields.get("temperature_c"),
+        "weatherHumidity": weather_fields.get("humidity_percent"),
+        "weatherPressure": weather_fields.get("pressure_hpa"),
+        "weatherWind": weather_fields.get("wind_speed_mps"),
+        "weatherRain": weather_fields.get("rain_rate_mm_h"),
+        "weatherSolar": weather_fields.get("solar_w_m2"),
+        "weatherLightning": weather_fields.get("lightning_count"),
     }
 
 

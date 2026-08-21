@@ -16,6 +16,13 @@ const TELEMETRY_METRICS = {
   voiceCalls: {label: "Scanner voice calls", unit: ""},
   vhfLocks: {label: "VHF locks", unit: ""},
   uhfLocks: {label: "UHF locks", unit: ""},
+  weatherTemperature: {label: "Outdoor temperature", unit: "°C"},
+  weatherHumidity: {label: "Outdoor humidity", fixedMin: 0, fixedMax: 100, unit: "%"},
+  weatherPressure: {label: "Barometric pressure", unit: " hPa"},
+  weatherWind: {label: "Wind speed", unit: " m/s"},
+  weatherRain: {label: "Rain rate", fixedMin: 0, unit: " mm/h"},
+  weatherSolar: {label: "Solar radiation", fixedMin: 0, unit: " W/m²"},
+  weatherLightning: {label: "Lightning strikes", fixedMin: 0, unit: ""},
 };
 
 let telemetryHistory = [];
@@ -241,6 +248,8 @@ function renderTelemetryChart(metricName) {
   chart.appendChild(scale);
   const latest = points.at(-1);
   const first = points[0];
+  const latestValue = document.querySelector(`#metric-${metricName}`);
+  if (latestValue) latestValue.textContent = `${latest.value.toFixed(definition.unit ? 1 : 0)}${definition.unit}`;
   chart.setAttribute("aria-label", `${definition.label}: ${latest.value}${definition.unit}; ${points.length} samples from ${new Date(first.timestamp).toLocaleTimeString()} to ${new Date(latest.timestamp).toLocaleTimeString()}`);
 }
 
@@ -255,6 +264,12 @@ function showTelemetryHistory(payload) {
     summary.textContent = payload?.sample_count
       ? `${payload.sample_count} persistent samples · since ${formatTimestamp(payload.first_sample_utc)}`
       : "Persistent history · waiting for the first sample";
+  }
+  const weatherSummary = document.querySelector("#weather-history-summary");
+  if (weatherSummary) {
+    weatherSummary.textContent = payload?.sample_count
+      ? `${payload.sample_count} persistent samples · since ${formatTimestamp(payload.first_sample_utc)}`
+      : "Persistent history · waiting for weather samples";
   }
   renderTelemetryCharts();
 }
