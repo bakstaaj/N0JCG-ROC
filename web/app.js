@@ -952,6 +952,10 @@ function showOperatorStatus(status) {
   document.querySelector('[data-operator-action="rms_recover"]').disabled = !status.authenticated || Boolean(status.maintenance_mode) || Boolean(status.rf_session_active);
   document.querySelector('[data-operator-action="maintenance_on"]').disabled = !status.authenticated || Boolean(status.maintenance_mode);
   document.querySelector('[data-operator-action="maintenance_off"]').disabled = !status.authenticated || !status.maintenance_mode;
+  document.querySelectorAll('[data-operator-action="repair_service"]').forEach((button) => {
+    button.disabled = !status.authenticated || (button.dataset.rfSensitive === "true" && (Boolean(status.rf_session_active) || !status.rf_activity_check_available));
+    button.title = button.disabled && button.dataset.rfSensitive === "true" ? "RF repair is blocked while activity cannot be verified or a session is active" : "Restart this fixed, allowlisted service and verify its health";
+  });
   const cmsBlocked = !status.authenticated || status.maintenance_mode || !status.rf_activity_check_available || status.rf_session_active;
   cmsTest.disabled = cmsBlocked;
   if (!status.rf_activity_check_available) {
@@ -991,7 +995,7 @@ function operatorMessage(message, failed = false) {
   output.classList.toggle("is-error", failed);
 }
 
-async function runOperatorAction(action) {
+async function runOperatorAction(action, parameters = {}) {
   const confirmations = {
     restart: "Restart the Winlink RMS and Dire Wolf services now? Active sessions will be disconnected.",
     rms_recover: "Recover a stalled RMS session? This stops and restarts only LinBPQ RMS after verifying that no RF session is active.",
@@ -999,7 +1003,8 @@ async function runOperatorAction(action) {
     maintenance_off: "Start the Winlink modem and RMS and return the gateway online?",
     cms_test: "Run a network-only authenticated CMS connectivity test? The ROC will block this action if an RF session is active.",
   };
-  if (!window.confirm(confirmations[action])) return;
+  const confirmation = confirmations[action] || `Repair ${parameters.label || parameters.service || "the selected service"} now? Only the fixed allowlisted service will be restarted.`;
+  if (!window.confirm(confirmation)) return;
   const buttons = [...document.querySelectorAll("#operator-actions button")];
   buttons.forEach((button) => { button.disabled = true; });
   operatorMessage("Operator action in progress…");
@@ -1008,7 +1013,7 @@ async function runOperatorAction(action) {
       method: "POST",
       credentials: "same-origin",
       headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken},
-      body: JSON.stringify({action}),
+      body: JSON.stringify({action, ...parameters}),
     });
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.error || payload.message || "Operator action failed");
@@ -1052,7 +1057,7 @@ function initOperatorControls() {
     }
   });
   document.querySelectorAll("[data-operator-action]").forEach((button) => {
-    button.addEventListener("click", () => runOperatorAction(button.dataset.operatorAction));
+    button.addEventListener("click", () => runOperatorAction(button.dataset.operatorAction, button.dataset.operatorService ? {service: button.dataset.operatorService, label: button.textContent.trim()} : {}));
   });
   document.querySelector("#operator-logout")?.addEventListener("click", async () => {
     const response = await fetch("/api/operator/logout", {

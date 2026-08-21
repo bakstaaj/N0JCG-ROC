@@ -28,6 +28,16 @@ TRIAL_SERVICES = (
     "n0jcg-winlink-modem.service",
     "n0jcg-winlink-rms.service",
 )
+REPAIR_SERVICES = {
+    "aprs_rx": ("APRS listener", "n0jcg-aprs-rx.service", False),
+    "aprs_monitor": ("APRS pipeline watchdog", "n0jcg-aprs-monitor.service", False),
+    "weather": ("Weather collector", "n0jcg-weather.service", False),
+    "cwop_weather": ("CWOP uploader", "n0jcg-cwop-weather.service", False),
+    "aprs_telemetry": ("APRS telemetry publisher", "n0jcg-aprs-telemetry.service", False),
+    "aprs_beacon": ("APRS beacon scheduler", "n0jcg-aprs-beacon.service", True),
+    "winlink_modem": ("Winlink modem", "n0jcg-winlink-modem.service", True),
+    "winlink_rms": ("Winlink RMS", "n0jcg-winlink-rms.service", True),
+}
 
 
 def run(command: list[str], timeout: int = 30, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -114,6 +124,39 @@ def ethernet_result(action: str, arguments: list[str], timeout: int = 30) -> dic
 
 
 def perform(action: str, parameters: object = None) -> dict:
+    if action == "repair_service":
+        if not isinstance(parameters, dict):
+            return {"ok": False, "action": action, "error": "service repair target is required"}
+        key = str(parameters.get("service", ""))
+        target = REPAIR_SERVICES.get(key)
+        if target is None:
+            return {"ok": False, "action": action, "error": "service repair target is not allowlisted"}
+        label, unit, rf_sensitive = target
+        activity = None
+        if rf_sensitive:
+            activity = probe_rf_session()
+            if not activity.get("available"):
+                return {"ok": False, "action": action, "service": key, "error": "Repair blocked: RF activity state is unavailable", "rf_activity": activity}
+            if activity.get("active"):
+                return {"ok": False, "action": action, "service": key, "error": "Repair blocked: an RF session is active", "rf_activity": activity}
+        before = service_states((unit,)).get(unit, "unknown")
+        completed = run(["systemctl", "restart", unit], timeout=30)
+        after = service_states((unit,)).get(unit, "unknown")
+        result = {
+            "ok": completed.returncode == 0 and after == "active",
+            "action": action,
+            "service": key,
+            "unit": unit,
+            "label": label,
+            "before": before,
+            "after": after,
+            "message": f"{label} repaired and is active" if completed.returncode == 0 and after == "active" else f"{label} repair failed; state is {after}",
+        }
+        if activity is not None:
+            result["rf_activity"] = activity
+        if completed.returncode != 0 and completed.stderr.strip():
+            result["error"] = completed.stderr.strip()[-240:]
+        return result
     if action == "rms_recover":
         activity = probe_rf_session()
         if not activity.get("available"):

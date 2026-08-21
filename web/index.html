@@ -339,6 +339,16 @@
               <button class="n0-button n0-button--secondary" type="button" data-operator-action="maintenance_on">Enter maintenance</button>
               <button class="n0-button n0-button--primary" type="button" data-operator-action="maintenance_off">Return gateway online</button>
               <button class="n0-button n0-button--secondary" type="button" data-operator-action="cms_test">Test CMS connection</button>
+              <div class="operator-repairs" aria-label="Repair services">
+                <strong>Repair a service fault</strong>
+                <button class="n0-button n0-button--secondary" type="button" data-operator-action="repair_service" data-operator-service="aprs_rx">Repair APRS listener</button>
+                <button class="n0-button n0-button--secondary" type="button" data-operator-action="repair_service" data-operator-service="aprs_monitor">Repair APRS watchdog</button>
+                <button class="n0-button n0-button--secondary" type="button" data-operator-action="repair_service" data-operator-service="weather">Repair weather collector</button>
+                <button class="n0-button n0-button--secondary" type="button" data-operator-action="repair_service" data-operator-service="cwop_weather">Repair CWOP uploader</button>
+                <button class="n0-button n0-button--secondary" type="button" data-operator-action="repair_service" data-operator-service="aprs_telemetry">Repair APRS telemetry</button>
+                <button class="n0-button n0-button--secondary" type="button" data-operator-action="repair_service" data-operator-service="winlink_modem" data-rf-sensitive="true">Repair Winlink modem</button>
+                <button class="n0-button n0-button--secondary" type="button" data-operator-action="repair_service" data-operator-service="winlink_rms" data-rf-sensitive="true">Repair Winlink RMS</button>
+              </div>
               <button id="operator-diagnostics" class="n0-button n0-button--secondary" type="button">Download diagnostics</button>
               <button id="operator-logout" class="n0-button n0-button--text" type="button">Sign out</button>
             </div>

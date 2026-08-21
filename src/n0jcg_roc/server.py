@@ -682,6 +682,12 @@ class RocRequestHandler(BaseHTTPRequestHandler):
                         "dns": dns,
                     }
                     helper_timeout = 70.0
+                elif action == "repair_service":
+                    service = str(payload.get("service", ""))
+                    if not service or len(service) > 32 or not service.replace("_", "").isalnum():
+                        raise ValueError("service repair target is invalid")
+                    parameters = {"service": service}
+                    helper_timeout = 45.0
                 result = request_helper(action, self.server.operator_socket_path, helper_timeout, parameters)
             except (OSError, ValueError, TypeError, json.JSONDecodeError, UnicodeError) as error:
                 append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="operator_action", result="failed", detail=str(error))

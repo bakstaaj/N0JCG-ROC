@@ -338,6 +338,8 @@ button, select { font: inherit; }
 .operator-setup strong, .operator-setup code { display: block; }
 .operator-setup code { margin-top: 7px; color: var(--n0-color-navy); font: .8rem var(--n0-font-mono); overflow-wrap: anywhere; }
 .operator-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.operator-repairs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--n0-color-border); }
+.operator-repairs strong { width: 100%; color: var(--n0-color-navy); font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; }
 .operator-guard { display: block; margin-top: 10px; color: var(--n0-color-text-muted); font-size: .72rem; }
 .operator-guard.is-blocked { color: var(--n0-color-danger); font-weight: 700; }
 .operator-result { display: block; min-height: 20px; margin-top: 12px; color: var(--n0-color-success); font-size: .78rem; }
