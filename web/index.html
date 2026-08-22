@@ -60,16 +60,6 @@
             <span class="interlock-icon" aria-hidden="true">TX</span>
             <div><strong>Checking RMS state</strong><small>Loading commissioned gateway status</small></div>
           </div>
-          <div class="weather-history-heading"><div><p class="eyebrow">Persistent history</p><h3>Weather trends</h3></div><p id="weather-history-summary">Loading weather samples</p></div>
-          <div class="telemetry-grid weather-history-grid" aria-live="polite">
-            <article class="telemetry-card" data-telemetry-card="weatherTemperature"><div class="telemetry-heading"><span>Outdoor temperature</span><strong id="metric-weatherTemperature">—</strong></div><div id="chart-weatherTemperature" class="telemetry-chart" role="img" aria-label="Outdoor temperature history"></div><small>°C · persistent samples</small></article>
-            <article class="telemetry-card" data-telemetry-card="weatherHumidity"><div class="telemetry-heading"><span>Outdoor humidity</span><strong id="metric-weatherHumidity">—</strong></div><div id="chart-weatherHumidity" class="telemetry-chart" role="img" aria-label="Outdoor humidity history"></div><small>% relative humidity</small></article>
-            <article class="telemetry-card" data-telemetry-card="weatherPressure"><div class="telemetry-heading"><span>Barometric pressure</span><strong id="metric-weatherPressure">—</strong></div><div id="chart-weatherPressure" class="telemetry-chart" role="img" aria-label="Barometric pressure history"></div><small>hPa · relative pressure</small></article>
-            <article class="telemetry-card" data-telemetry-card="weatherWind"><div class="telemetry-heading"><span>Wind speed</span><strong id="metric-weatherWind">—</strong></div><div id="chart-weatherWind" class="telemetry-chart" role="img" aria-label="Wind speed history"></div><small>m/s · sustained wind</small></article>
-            <article class="telemetry-card" data-telemetry-card="weatherRain"><div class="telemetry-heading"><span>Rain rate</span><strong id="metric-weatherRain">—</strong></div><div id="chart-weatherRain" class="telemetry-chart" role="img" aria-label="Rain rate history"></div><small>mm/h · current rate</small></article>
-            <article class="telemetry-card" data-telemetry-card="weatherSolar"><div class="telemetry-heading"><span>Solar radiation</span><strong id="metric-weatherSolar">—</strong></div><div id="chart-weatherSolar" class="telemetry-chart" role="img" aria-label="Solar radiation history"></div><small>W/m² · daylight trend</small></article>
-            <article class="telemetry-card" data-telemetry-card="weatherLightning"><div class="telemetry-heading"><span>Lightning strikes</span><strong id="metric-weatherLightning">—</strong></div><div id="chart-weatherLightning" class="telemetry-chart" role="img" aria-label="Lightning strike history"></div><small>Sensor counter</small></article>
-          </div>
         </section>
 
         <section id="trial-expired-notice" class="trial-notice" hidden aria-live="polite">
@@ -284,6 +274,16 @@
             <article class="weather-card"><span>Gateway</span><strong id="weather-gateway">Checking</strong><small id="weather-gateway-detail">192.168.68.131</small></article>
             <article class="weather-card"><span>CWOP upload</span><strong id="weather-cwop">Disabled</strong><small id="weather-cwop-detail">Operator configuration required</small></article>
           </div>
+          <div class="weather-history-heading"><div><p class="eyebrow">Persistent history</p><h3>Weather trends</h3></div><p id="weather-history-summary">Loading weather samples</p></div>
+          <div class="telemetry-grid weather-history-grid" aria-live="polite">
+            <article class="telemetry-card" data-telemetry-card="weatherTemperature"><div class="telemetry-heading"><span>Outdoor temperature</span><strong id="metric-weatherTemperature">—</strong></div><div id="chart-weatherTemperature" class="telemetry-chart" role="img" aria-label="Outdoor temperature history"></div><small>°C · persistent samples</small></article>
+            <article class="telemetry-card" data-telemetry-card="weatherHumidity"><div class="telemetry-heading"><span>Outdoor humidity</span><strong id="metric-weatherHumidity">—</strong></div><div id="chart-weatherHumidity" class="telemetry-chart" role="img" aria-label="Outdoor humidity history"></div><small>% relative humidity</small></article>
+            <article class="telemetry-card" data-telemetry-card="weatherPressure"><div class="telemetry-heading"><span>Barometric pressure</span><strong id="metric-weatherPressure">—</strong></div><div id="chart-weatherPressure" class="telemetry-chart" role="img" aria-label="Barometric pressure history"></div><small>hPa · relative pressure</small></article>
+            <article class="telemetry-card" data-telemetry-card="weatherWind"><div class="telemetry-heading"><span>Wind speed</span><strong id="metric-weatherWind">—</strong></div><div id="chart-weatherWind" class="telemetry-chart" role="img" aria-label="Wind speed history"></div><small>m/s · sustained wind</small></article>
+            <article class="telemetry-card" data-telemetry-card="weatherRain"><div class="telemetry-heading"><span>Rain rate</span><strong id="metric-weatherRain">—</strong></div><div id="chart-weatherRain" class="telemetry-chart" role="img" aria-label="Rain rate history"></div><small>mm/h · current rate</small></article>
+            <article class="telemetry-card" data-telemetry-card="weatherSolar"><div class="telemetry-heading"><span>Solar radiation</span><strong id="metric-weatherSolar">—</strong></div><div id="chart-weatherSolar" class="telemetry-chart" role="img" aria-label="Solar radiation history"></div><small>W/m² · daylight trend</small></article>
+            <article class="telemetry-card" data-telemetry-card="weatherLightning"><div class="telemetry-heading"><span>Lightning strikes</span><strong id="metric-weatherLightning">—</strong></div><div id="chart-weatherLightning" class="telemetry-chart" role="img" aria-label="Lightning strike history"></div><small>Sensor counter</small></article>
+          </div>
         </section>
         </div>
 
@@ -364,6 +364,13 @@
             </div>
             <small id="operator-cms-guard" class="operator-guard">CMS testing is available only when LinBPQ confirms that no RF session is active.</small>
             <output id="operator-result" class="operator-result" aria-live="polite"></output>
+            <article class="operator-calibration" id="rf-calibration-card">
+              <div class="settings-card-header"><div><h3>Receive-only RMS audio calibration</h3><small>Noise-floor mode: adjust the RMS radio volume while watching the DigiRig meter. This mode pauses only the Winlink modem/RMS services and never keys a transmitter.</small></div><span id="rf-calibration-state" class="application-state">Stopped</span></div>
+              <div class="calibration-metrics"><div><span>Noise-floor quality</span><strong id="rf-calibration-quality">—</strong></div><div><span>Latest peak</span><strong id="rf-calibration-level">—</strong></div><div><span>Average RMS</span><strong id="rf-calibration-average">—</strong></div><div><span>RMS dBFS</span><strong id="rf-calibration-rms">—</strong></div><div><span>Peak dBFS</span><strong id="rf-calibration-peak">—</strong></div></div>
+              <p id="rf-calibration-guidance" class="muted">Login as operator, start calibration, then adjust the RMS radio volume. Aim for a usable noise floor without clipping.</p>
+              <div class="operator-actions"><button id="rf-calibration-start" class="n0-button n0-button--secondary" type="button">Start receive test</button><button id="rf-calibration-stop" class="n0-button n0-button--secondary" type="button" disabled>Stop receive test</button></div>
+              <pre id="rf-calibration-events" class="calibration-events" aria-live="polite">No calibration evidence collected.</pre>
+            </article>
           </div>
         </section>
         </div>

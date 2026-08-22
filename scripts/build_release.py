@@ -27,7 +27,7 @@ def included_files() -> list[Path]:
         relative = path.relative_to(ROOT)
         if not path.is_file():
             continue
-        if any(part in EXCLUDED_PARTS for part in relative.parts):
+        if any(part in EXCLUDED_PARTS or part.startswith("rendered-") for part in relative.parts):
             continue
         if path.name in EXCLUDED_FILES or path.suffix in EXCLUDED_SUFFIXES:
             continue

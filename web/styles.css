@@ -428,3 +428,4 @@ button, select { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+.operator-calibration{margin-top:1rem;padding:1rem;border:1px solid var(--line,#cbd5e1);border-radius:.6rem;background:#f8fafc}.calibration-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.75rem;margin:1rem 0}.calibration-metrics div{padding:.75rem;background:#fff;border-radius:.4rem}.calibration-metrics span{display:block;font-size:.78rem;color:#52657d}.calibration-metrics strong{font-size:1.4rem}.calibration-quality--quiet{color:#a56a00}.calibration-quality--usable{color:#11683a}.calibration-quality--hot{color:#a52323}.calibration-events{max-height:12rem;overflow:auto;padding:.75rem;background:#0b1724;color:#dcecff;border-radius:.4rem;font-size:.72rem;white-space:pre-wrap}

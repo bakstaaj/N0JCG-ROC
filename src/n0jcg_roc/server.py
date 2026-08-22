@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import re
 import sqlite3
+import struct
 import subprocess
 import threading
 import time
@@ -82,6 +83,116 @@ APRS_PIPELINE_STALE_SECONDS = int(os.environ.get("APRS_PIPELINE_STALE_SECONDS", 
 APRS_RF_QUIET_SECONDS = int(os.environ.get("APRS_RF_QUIET_SECONDS", "21600"))
 APRS_PIPELINE_STATE_PATH = PROJECT_ROOT / "runtime" / "aprs" / "pipeline-health.json"
 APRS_RF_HISTORY_PATH = PROJECT_ROOT / "runtime" / "aprs" / "rf-history.json"
+RF_CALIBRATION_LOCK = threading.Lock()
+RF_CALIBRATION_STOP = threading.Event()
+RF_CALIBRATION_PROCESS = None
+RF_CALIBRATION_THREAD = None
+RF_CALIBRATION_STATE = {"active": False, "started_utc": None, "latest_level": None, "average_level": None, "rms_dbfs": None, "peak_dbfs": None, "sample_count": 0, "error": None}
+
+
+def _rf_calibration_worker() -> None:
+    global RF_CALIBRATION_PROCESS
+    try:
+        process = subprocess.Popen(
+            ["arecord", "-D", "plughw:Device,0", "-f", "S16_LE", "-r", "44100", "-c", "1", "-t", "raw"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        with RF_CALIBRATION_LOCK:
+            RF_CALIBRATION_PROCESS = process
+        total = 0
+        windows: list[float] = []
+        while not RF_CALIBRATION_STOP.is_set():
+            raw = process.stdout.read(2048)
+            raw = raw[:len(raw) - (len(raw) % 2)]
+            if not raw:
+                continue
+            values = struct.unpack(f"<{len(raw) // 2}h", raw)
+            rms = math.sqrt(sum(value * value for value in values) / len(values))
+            peak = max(abs(value) for value in values)
+            total += len(values)
+            windows = (windows + [rms])[-5:]
+            with RF_CALIBRATION_LOCK:
+                RF_CALIBRATION_STATE.update({"latest_level": round(100 * peak / 32768), "average_level": round(100 * sum(windows) / len(windows) / 32768, 1), "rms_dbfs": round(20 * math.log10(max(rms, 1) / 32768), 1), "peak_dbfs": round(20 * math.log10(max(peak, 1) / 32768), 1), "sample_count": total})
+    except (OSError, subprocess.SubprocessError, ValueError, struct.error) as exc:
+        with RF_CALIBRATION_LOCK:
+            RF_CALIBRATION_STATE["error"] = str(exc)
+    finally:
+        with RF_CALIBRATION_LOCK:
+            process = RF_CALIBRATION_PROCESS
+            RF_CALIBRATION_PROCESS = None
+        if process and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+
+def stop_rf_calibration(server) -> None:
+    global RF_CALIBRATION_THREAD
+    with RF_CALIBRATION_LOCK:
+        was_active = bool(RF_CALIBRATION_STATE["active"])
+        RF_CALIBRATION_STATE["active"] = False
+    RF_CALIBRATION_STOP.set()
+    thread = RF_CALIBRATION_THREAD
+    if thread and thread.is_alive():
+        thread.join(timeout=3)
+    RF_CALIBRATION_THREAD = None
+    if was_active:
+        request_helper("rf_calibration_stop", server.operator_socket_path, 15)
+
+
+def start_rf_calibration(server) -> None:
+    global RF_CALIBRATION_THREAD
+    stop_rf_calibration(server)
+    result = request_helper("rf_calibration_start", server.operator_socket_path, 15)
+    if not result.get("ok"):
+        raise RuntimeError(result.get("error", "could not stop APRS listener"))
+    RF_CALIBRATION_STOP.clear()
+    with RF_CALIBRATION_LOCK:
+        RF_CALIBRATION_STATE.update({"active": True, "started_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "latest_level": None, "average_level": None, "rms_dbfs": None, "peak_dbfs": None, "sample_count": 0, "error": None})
+    RF_CALIBRATION_THREAD = threading.Thread(target=_rf_calibration_worker, daemon=True, name="rf-calibration")
+    RF_CALIBRATION_THREAD.start()
+
+
+def collect_rf_calibration() -> dict:
+    """Observe existing modem journals for receive-only calibration."""
+    with RF_CALIBRATION_LOCK:
+        state = dict(RF_CALIBRATION_STATE)
+    lines: list[str] = []
+    for unit in ("n0jcg-winlink-modem.service", "n0jcg-aprs-rx.service"):
+        try:
+            completed = subprocess.run(
+                ["journalctl", "-u", unit, "-n", "120", "--no-pager", "-o", "short-iso"],
+                capture_output=True, text=True, check=False, timeout=4,
+            )
+            if completed.returncode == 0:
+                lines.extend(completed.stdout.splitlines())
+        except (OSError, subprocess.SubprocessError):
+            continue
+    levels = [int(match.group(1)) for line in lines if (match := re.search(r"audio level = (\d+)", line))]
+    frame_lines = [line.strip() for line in lines if re.search(r"\] [A-Z0-9-]+>[^:]+:|\] .*\((?:I|RR|UA|SABM|DISC)", line)]
+    rms_dbfs = state.get("rms_dbfs")
+    peak_dbfs = state.get("peak_dbfs")
+    # Leave margin on both sides of the usable band; edge readings have been
+    # shown to decode unreliably even when they are technically non-clipping.
+    quality = "too hot / clipping" if peak_dbfs is not None and peak_dbfs >= -6 else "too quiet" if rms_dbfs is not None and rms_dbfs <= -40 else "usable noise floor" if rms_dbfs is not None else None
+    guidance = "Lower the RMS radio volume; the DigiRig input is clipping." if quality == "too hot / clipping" else "Raise the RMS radio volume one step at a time." if quality == "too quiet" else "Noise floor is usable. Stop the test and perform a carrier/voice check." if quality == "usable noise floor" else "Start the receive test and adjust the RMS radio volume."
+    return {
+        "active": bool(state.get("active")),
+        "started_utc": state.get("started_utc"),
+        "receive_only": True,
+        "audio": {
+            "latest_level": state.get("latest_level") if state.get("active") else (levels[-1] if levels else None),
+            "average_level": state.get("average_level") if state.get("active") else (round(sum(levels[-10:]) / min(len(levels), 10), 1) if levels else None),
+            "rms_dbfs": rms_dbfs, "peak_dbfs": peak_dbfs, "quality": quality,
+            "sample_count": state.get("sample_count") if state.get("active") else len(levels),
+            "guidance": guidance,
+        },
+        "decoded_frames": len(frame_lines),
+        "recent_events": lines[-30:],
+        "observed_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
 
 
 def collect_telemetry_sample(application_settings_path: Path) -> dict:
@@ -560,6 +671,12 @@ class RocRequestHandler(BaseHTTPRequestHandler):
             }
             self._download_json(diagnostics, "n0jcg-roc-diagnostics.json")
             return
+        if route == "/api/operator/rf-calibration":
+            if self._operator_session() is None:
+                self._json({"ok": False, "error": "operator login required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            self._json(collect_rf_calibration())
+            return
         if route == "/api/admin-report/settings":
             if self._operator_session() is None:
                 self._json({"ok": False, "error": "operator login required"}, HTTPStatus.UNAUTHORIZED)
@@ -714,6 +831,20 @@ class RocRequestHandler(BaseHTTPRequestHandler):
                 ),
             )
             self._json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_GATEWAY)
+            return
+        if route == "/api/operator/rf-calibration":
+            if self._operator_session(require_csrf=True) is None:
+                self._json({"ok": False, "error": "valid operator session required"}, HTTPStatus.UNAUTHORIZED)
+                return
+            payload = self._read_json(1024)
+            enabled = bool(payload.get("enabled"))
+            try:
+                start_rf_calibration(self.server) if enabled else stop_rf_calibration(self.server)
+            except (OSError, RuntimeError, ValueError) as error:
+                self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_GATEWAY)
+                return
+            append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="rf_calibration", result="started" if enabled else "stopped")
+            self._json({"ok": True, "message": "Receive-only RF calibration started." if enabled else "Receive-only RF calibration stopped.", **collect_rf_calibration()})
             return
         if route == "/api/station/settings":
             length = int(self.headers.get("Content-Length", "0"))

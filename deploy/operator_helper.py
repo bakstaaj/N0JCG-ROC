@@ -201,6 +201,10 @@ def perform(action: str, parameters: object = None) -> dict:
             ["systemctl", "start", "n0jcg-winlink-modem.service"],
             ["systemctl", "start", "n0jcg-winlink-rms.service"],
         ]
+    elif action == "rf_calibration_start":
+        commands = [["systemctl", "stop", "n0jcg-winlink-rms.service"], ["systemctl", "stop", "n0jcg-winlink-modem.service"]]
+    elif action == "rf_calibration_stop":
+        commands = [["systemctl", "start", "n0jcg-winlink-modem.service"], ["systemctl", "start", "n0jcg-winlink-rms.service"]]
     elif action == "cms_test":
         activity = probe_rf_session()
         if not activity["available"]:

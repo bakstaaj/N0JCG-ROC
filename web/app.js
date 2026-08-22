@@ -997,6 +997,7 @@ async function refreshOperatorStatus() {
     await loadAprsAlertSettings();
     aprsAlertSettingsLoaded = true;
   }
+  if (status.authenticated) await refreshRfCalibration().catch(() => {});
   if (status.authenticated) await loadCwopSettings().catch(() => {});
   if (status.authenticated && !ethernetSettingsLoaded) {
     await loadEthernetStatus();
@@ -1008,6 +1009,37 @@ function operatorMessage(message, failed = false) {
   const output = document.querySelector("#operator-result");
   output.textContent = message;
   output.classList.toggle("is-error", failed);
+}
+
+let rfCalibrationTimer = null;
+async function refreshRfCalibration() {
+  const response = await fetch("/api/operator/rf-calibration", {cache: "no-store", credentials: "same-origin"});
+  if (!response.ok) return;
+  const data = await response.json();
+  const audio = data.audio || {};
+  document.querySelector("#rf-calibration-state").textContent = data.active ? "Running · receive only" : "Stopped";
+  const quality = document.querySelector("#rf-calibration-quality");
+  quality.textContent = audio.quality || "—";
+  quality.className = audio.quality === "too quiet" ? "calibration-quality--quiet" : audio.quality === "too hot / clipping" ? "calibration-quality--hot" : audio.quality === "usable noise floor" ? "calibration-quality--usable" : "";
+  document.querySelector("#rf-calibration-level").textContent = audio.latest_level ?? "—";
+  document.querySelector("#rf-calibration-average").textContent = audio.average_level ?? "—";
+  document.querySelector("#rf-calibration-rms").textContent = audio.rms_dbfs == null ? "—" : `${audio.rms_dbfs} dBFS`;
+  document.querySelector("#rf-calibration-peak").textContent = audio.peak_dbfs == null ? "—" : `${audio.peak_dbfs} dBFS`;
+  document.querySelector("#rf-calibration-guidance").textContent = audio.guidance || "Adjust the physical radio volume while observing the live level.";
+  document.querySelector("#rf-calibration-events").textContent = (data.recent_events || []).slice(-12).join("\n") || "No calibration evidence collected.";
+  const toggle = document.querySelector("#rf-calibration-start");
+  toggle.disabled = false;
+  toggle.textContent = data.active ? "Stop receive test" : "Start receive test";
+  document.querySelector("#rf-calibration-stop").hidden = true;
+}
+async function setRfCalibration(enabled) {
+  const response = await fetch("/api/operator/rf-calibration", {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken}, body: JSON.stringify({enabled})});
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) throw new Error(payload.error || "RF calibration could not be changed");
+  await refreshRfCalibration();
+  if (enabled && !rfCalibrationTimer) rfCalibrationTimer = window.setInterval(() => refreshRfCalibration().catch(() => {}), 2000);
+  if (!enabled && rfCalibrationTimer) { window.clearInterval(rfCalibrationTimer); rfCalibrationTimer = null; }
+  operatorMessage(payload.message);
 }
 
 async function runOperatorAction(action, parameters = {}) {
@@ -1073,6 +1105,13 @@ function initOperatorControls() {
   });
   document.querySelectorAll("[data-operator-action]").forEach((button) => {
     button.addEventListener("click", () => runOperatorAction(button.dataset.operatorAction, button.dataset.operatorService ? {service: button.dataset.operatorService, label: button.textContent.trim()} : {}));
+  });
+  document.querySelector("#rf-calibration-start")?.addEventListener("click", async () => {
+    const active = document.querySelector("#rf-calibration-state")?.textContent.startsWith("Running");
+    try { await setRfCalibration(!active); } catch (error) { operatorMessage(error.message, true); }
+  });
+  document.querySelector("#rf-calibration-stop")?.addEventListener("click", async () => {
+    try { await setRfCalibration(false); } catch (error) { operatorMessage(error.message, true); }
   });
   document.querySelector("#operator-logout")?.addEventListener("click", async () => {
     const response = await fetch("/api/operator/logout", {
