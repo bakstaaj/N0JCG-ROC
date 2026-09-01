@@ -21,6 +21,7 @@ APRSFI_MAX_CALLSIGNS = 20
 APRS_MAP_WINDOW_HOURS = 24
 APRS_JOURNAL_UNIT = os.environ.get("APRS_JOURNAL_UNIT", "n0jcg-aprs-rx.service")
 CALLSIGN_PATTERN = re.compile(r"^(?:\[[^\]]+\]\s*)?([A-Z0-9][A-Z0-9-]{1,8})>", re.IGNORECASE)
+POSITION_PATTERN = re.compile(r"[!=/@](\d{2})(\d{2}\.\d{2})([NS])[^0-9A-Za-z]?([0-9]{3})(\d{2}\.\d{2})([EW])")
 _SETTINGS_LOCK = Lock()
 
 
@@ -81,6 +82,26 @@ def _heard_activity_from_journal(lines: list[str], limit: int = APRSFI_MAX_CALLS
         })
 
     callsigns: list[str] = []
+    tracks: dict[str, list[dict]] = {}
+    for record in records:
+        # Internet-only frames describe the ROC beacon, not an RF device heard
+        # by the receiver, so they must not create a local track.
+        if record["frame"].startswith("[ig]"):
+            continue
+        position = POSITION_PATTERN.search(record["frame"])
+        if not position:
+            continue
+        lat_deg, lat_min, lat_hemi, lon_deg, lon_min, lon_hemi = position.groups()
+        latitude = (int(lat_deg) + float(lat_min) / 60) * (1 if lat_hemi == "N" else -1)
+        longitude = (int(lon_deg) + float(lon_min) / 60) * (1 if lon_hemi == "E" else -1)
+        points = tracks.setdefault(record["callsign"], [])
+        points.append({
+            "latitude": latitude,
+            "longitude": longitude,
+            "timestamp_utc": record["timestamp_utc"],
+            "frame": record["frame"],
+        })
+    tracks = {callsign: points[-200:] for callsign, points in tracks.items()}
     latest_by_callsign: dict[str, dict] = {}
     for record in reversed(records):
         callsign = record["callsign"]
@@ -100,6 +121,7 @@ def _heard_activity_from_journal(lines: list[str], limit: int = APRSFI_MAX_CALLS
         "callsigns": callsigns,
         "frame_count": len(records),
         "latest_by_callsign": latest_by_callsign,
+        "tracks": tracks,
     }
 
 
@@ -119,9 +141,9 @@ def recent_heard_activity(window_hours: int = APRS_MAP_WINDOW_HOURS) -> dict:
             timeout=5,
         )
     except (OSError, subprocess.SubprocessError):
-        return {"callsigns": [], "frame_count": 0, "latest_by_callsign": {}, "source": "systemd-journal-unavailable"}
+        return {"callsigns": [], "frame_count": 0, "latest_by_callsign": {}, "tracks": {}, "source": "systemd-journal-unavailable"}
     if result.returncode != 0:
-        return {"callsigns": [], "frame_count": 0, "latest_by_callsign": {}, "source": "systemd-journal-unavailable"}
+        return {"callsigns": [], "frame_count": 0, "latest_by_callsign": {}, "tracks": {}, "source": "systemd-journal-unavailable"}
     return {**_heard_activity_from_journal(result.stdout.splitlines()), "source": "systemd-journal"}
 
 
@@ -240,6 +262,7 @@ def collect_aprs_map(
         "window_start_utc": datetime.fromtimestamp(cutoff_epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "activity_source": activity["source"],
         "stations": [],
+        "tracks": activity.get("tracks", {}),
         "source": "aprs.fi",
         "source_url": APRSFI_SOURCE_URL,
         "max_callsigns": APRSFI_MAX_CALLSIGNS,

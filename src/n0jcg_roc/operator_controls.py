@@ -16,7 +16,7 @@ SESSION_SECONDS = 30 * 60
 PASSWORD_ITERATIONS = 600_000
 ALLOWED_ACTIONS = {
     "restart", "rms_recover", "maintenance_on", "maintenance_off", "cms_test", "repair_service",
-    "wifi_scan", "wifi_connect", "ethernet_status", "ethernet_set", "ethernet_confirm", "rf_calibration_start", "rf_calibration_stop",
+    "wifi_scan", "wifi_connect", "ethernet_status", "ethernet_set", "ethernet_confirm", "rf_calibration_start", "rf_calibration_stop", "aprs_gain_status", "aprs_gain_set",
 }
 TRIAL_SERVICE_ACTIONS = {"trial_services_start", "trial_services_stop"}
 _AUDIT_LOCK = threading.Lock()

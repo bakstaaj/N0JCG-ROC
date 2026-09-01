@@ -1,6 +1,9 @@
 __pycache__/
 *.py[cod]
 *.tgz
+*.tar.gz
+drive-tests/
+roc-drive-audio.wav
 .pytest_cache/
 .venv/
 .server.env

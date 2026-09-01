@@ -164,6 +164,7 @@
           </div>
           <div class="aprs-map-panel">
             <div id="aprs-map" role="region" aria-label="Map of APRS stations received by ROC"></div>
+            <div id="aprs-map-track-legend" class="aprs-map-track-legend" hidden></div>
             <div id="aprs-map-message" class="aprs-map-message">Loading recently heard callsigns…</div>
           </div>
           <div class="aprs-map-footer"><span id="aprs-map-summary">Waiting for position data</span><span>Position data from <a href="https://aprs.fi/" target="_blank" rel="noopener">aprs.fi</a> · Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></span></div>
@@ -302,6 +303,18 @@
               <img src="/assets/N0JCG_Icon_Approved.png" alt="">
               <div><h3>N0JCG Scanner</h3><p>P25, VHF, and UHF receiver control and audio monitoring.</p><span class="application-state" data-application-state="scanner">Checking</span><a id="scanner-link" class="n0-button n0-button--primary" href="#">Open Scanner</a></div>
             </article>
+            <article class="application-card" data-application-card="wes">
+              <img src="/assets/N0JCG_Icon_Approved.png" alt="">
+              <div><h3>N0JCG Winlink Email Server</h3><p>Winlink email appliance and mailbox operations.</p><span class="application-state" data-application-state="wes">Checking</span><a id="wes-link" class="n0-button n0-button--primary" href="#">Open Winlink Email Server</a></div>
+            </article>
+            <article class="application-card" data-application-card="weather">
+              <img src="/assets/N0JCG_Icon_Approved.png" alt="">
+              <div><h3>N0JCG Weather</h3><p>Weather observations, history, and CWOP publishing.</p><span class="application-state" data-application-state="weather">Checking</span><a id="weather-link" class="n0-button n0-button--primary" href="#">Open Weather</a></div>
+            </article>
+            <article class="application-card" data-application-card="airband">
+              <img src="/assets/N0JCG_Icon_Approved.png" alt="">
+              <div><h3>N0JCG Airband</h3><p>Standalone civil airband receiver and monitoring.</p><span class="application-state" data-application-state="airband">Checking</span><a id="airband-link" class="n0-button n0-button--primary" href="#">Open Airband</a></div>
+            </article>
           </div>
         </section>
         </div>
@@ -349,6 +362,11 @@
               <button class="n0-button n0-button--secondary" type="button" data-operator-action="maintenance_on">Enter maintenance</button>
               <button class="n0-button n0-button--primary" type="button" data-operator-action="maintenance_off">Return gateway online</button>
               <button class="n0-button n0-button--secondary" type="button" data-operator-action="cms_test">Test CMS connection</button>
+              <div class="operator-gain" aria-label="APRS receiver gain">
+                <label>APRS RTL gain (dB)<input id="operator-aprs-gain" type="number" min="0" max="49.6" step="0.1" value="49.6" inputmode="decimal"></label>
+                <button id="operator-aprs-gain-save" class="n0-button n0-button--secondary" type="button">Apply APRS gain</button>
+                <small id="operator-aprs-gain-status">Adjust only while testing; applying restarts the APRS listener. The RTL tuner may round to its nearest supported step.</small>
+              </div>
               <div class="operator-repairs" aria-label="Repair services">
                 <strong>Repair a service fault</strong>
                 <button class="n0-button n0-button--secondary" type="button" data-operator-action="repair_service" data-operator-service="aprs_rx">Repair APRS listener</button>
@@ -364,7 +382,7 @@
             </div>
             <small id="operator-cms-guard" class="operator-guard">CMS testing is available only when LinBPQ confirms that no RF session is active.</small>
             <output id="operator-result" class="operator-result" aria-live="polite"></output>
-            <article class="operator-calibration" id="rf-calibration-card">
+            <article class="operator-calibration" id="rf-calibration-card" hidden>
               <div class="settings-card-header"><div><h3>Receive-only RMS audio calibration</h3><small>Noise-floor mode: adjust the RMS radio volume while watching the DigiRig meter. This mode pauses only the Winlink modem/RMS services and never keys a transmitter.</small></div><span id="rf-calibration-state" class="application-state">Stopped</span></div>
               <div class="calibration-metrics"><div><span>Noise-floor quality</span><strong id="rf-calibration-quality">—</strong></div><div><span>Latest peak</span><strong id="rf-calibration-level">—</strong></div><div><span>Average RMS</span><strong id="rf-calibration-average">—</strong></div><div><span>RMS dBFS</span><strong id="rf-calibration-rms">—</strong></div><div><span>Peak dBFS</span><strong id="rf-calibration-peak">—</strong></div></div>
               <p id="rf-calibration-guidance" class="muted">Login as operator, start calibration, then adjust the RMS radio volume. Aim for a usable noise floor without clipping.</p>
@@ -440,6 +458,21 @@
               <div class="settings-card-header"><div><h3>N0JCG Scanner</h3><small>Default service port 8070</small></div><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div>
               <div class="settings-fields"><label>Pi IP address or hostname<input name="host" type="text" inputmode="url" autocomplete="off" required></label><label>Web port<input name="port" type="number" min="1" max="65535" required></label></div>
               <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save Scanner settings</button><output aria-live="polite"></output></div>
+            </form>
+            <form class="settings-card" data-application-form="wes">
+              <div class="settings-card-header"><div><h3>N0JCG Winlink Email Server</h3><small>Standalone WES appliance web interface</small></div><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div>
+              <div class="settings-fields"><label>WES IP address or hostname<input name="host" type="text" inputmode="url" autocomplete="off" required></label><label>Web port<input name="port" type="number" min="1" max="65535" required></label></div>
+              <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save WES settings</button><output aria-live="polite"></output></div>
+            </form>
+            <form class="settings-card" data-application-form="weather">
+              <div class="settings-card-header"><div><h3>N0JCG Weather</h3><small>Standalone weather monitor or gateway application</small></div><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div>
+              <div class="settings-fields"><label>Weather IP address or hostname<input name="host" type="text" inputmode="url" autocomplete="off" required></label><label>Web port<input name="port" type="number" min="1" max="65535" required></label></div>
+              <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save Weather settings</button><output aria-live="polite"></output></div>
+            </form>
+            <form class="settings-card" data-application-form="airband">
+              <div class="settings-card-header"><div><h3>N0JCG Airband</h3><small>Standalone airband receiver application</small></div><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div>
+              <div class="settings-fields"><label>Airband IP address or hostname<input name="host" type="text" inputmode="url" autocomplete="off" required></label><label>Web port<input name="port" type="number" min="1" max="65535" required></label></div>
+              <div class="settings-actions"><button class="n0-button n0-button--primary" type="submit">Save Airband settings</button><output aria-live="polite"></output></div>
             </form>
             <form id="aprsfi-settings-form" class="settings-card settings-card--wide">
               <div class="settings-card-header"><div><h3>aprs.fi map access</h3><small>The API key remains on the ROC server and is never returned to the browser</small></div><div class="integration-controls"><span id="aprsfi-configured" class="application-state">Not configured</span><label class="switch-label"><input name="enabled" type="checkbox"><span>Enabled</span></label></div></div>

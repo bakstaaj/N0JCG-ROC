@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### APRS receiver tuning
+
+- Added a password-protected operator control for the RTL-SDR APRS gain.
+- Gain is validated from 0 to 49.6 dB, persisted in a systemd drop-in, and
+  applied by restarting only the APRS listener; the current value is shown
+  after operator login.
+
 ## 0.1.9 - 2026-08-19
 
 ### CWOP configuration

@@ -939,6 +939,7 @@ function showOperatorStatus(status) {
   const actions = document.querySelector("#operator-actions");
   const cmsTest = document.querySelector('[data-operator-action="cms_test"]');
   const cmsGuard = document.querySelector("#operator-cms-guard");
+  const rfCalibrationCard = document.querySelector("#rf-calibration-card");
   operatorCsrfToken = status.csrf_token || "";
   const telemetryReset = document.querySelector("#telemetry-reset");
   if (telemetryReset) {
@@ -953,6 +954,11 @@ function showOperatorStatus(status) {
   setup.hidden = status.configured;
   login.hidden = !status.configured || status.authenticated;
   actions.hidden = !status.authenticated;
+  if (rfCalibrationCard) rfCalibrationCard.hidden = !status.authenticated;
+  const gainInput = document.querySelector("#operator-aprs-gain");
+  const gainButton = document.querySelector("#operator-aprs-gain-save");
+  if (gainInput) gainInput.disabled = !status.authenticated;
+  if (gainButton) gainButton.disabled = !status.authenticated;
   if (!status.configured) {
     badge.textContent = "Setup required";
     badge.className = "n0-status n0-status--advisory";
@@ -985,6 +991,65 @@ function showOperatorStatus(status) {
   cmsGuard.classList.toggle("is-blocked", cmsBlocked && status.authenticated);
 }
 
+let aprsGainSaveInFlight = false;
+let aprsGainDirty = false;
+
+async function loadAprsGain({force = false} = {}) {
+  const input = document.querySelector("#operator-aprs-gain");
+  const statusOutput = document.querySelector("#operator-aprs-gain-status");
+  if (!input || !operatorCsrfToken || (!force && (aprsGainSaveInFlight || aprsGainDirty))) return;
+  try {
+    const response = await fetch("/api/operator/action", {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken},
+      body: JSON.stringify({action: "aprs_gain_status"}),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Gain status unavailable");
+    input.value = Number(payload.gain_db).toFixed(1);
+    aprsGainDirty = false;
+    statusOutput.textContent = `Current operator gain: ${Number(payload.gain_db).toFixed(1)} dB. Applying restarts the APRS listener.`;
+  } catch (error) {
+    statusOutput.textContent = error.message;
+  }
+}
+
+async function saveAprsGain() {
+  const input = document.querySelector("#operator-aprs-gain");
+  const statusOutput = document.querySelector("#operator-aprs-gain-status");
+  const button = document.querySelector("#operator-aprs-gain-save");
+  const gain = Number(input?.value);
+  if (!Number.isFinite(gain) || gain < 0 || gain > 49.6) {
+    statusOutput.textContent = "Enter a gain between 0 and 49.6 dB.";
+    return;
+  }
+  if (!window.confirm(`Set the APRS RTL gain to ${gain.toFixed(1)} dB and restart the listener?`)) return;
+  aprsGainSaveInFlight = true;
+  aprsGainDirty = true;
+  button.disabled = true;
+  statusOutput.textContent = `Applying ${gain.toFixed(1)} dB and restarting the APRS listener…`;
+  try {
+    const response = await fetch("/api/operator/action", {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken},
+      body: JSON.stringify({action: "aprs_gain_set", gain_db: gain}),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Could not apply APRS gain");
+    const appliedGain = Number(payload.gain_db);
+    input.value = appliedGain.toFixed(1);
+    aprsGainDirty = false;
+    statusOutput.textContent = payload.message || `APRS RTL gain applied: ${appliedGain.toFixed(1)} dB. Listener restarted successfully.`;
+    operatorMessage(statusOutput.textContent);
+  } catch (error) {
+    statusOutput.textContent = error.message;
+    operatorMessage(error.message, true);
+  } finally {
+    aprsGainSaveInFlight = false;
+    button.disabled = !operatorCsrfToken;
+  }
+}
+
 async function refreshOperatorStatus() {
   const response = await fetch("/api/operator/status", {cache: "no-store", credentials: "same-origin"});
   if (!response.ok) throw new Error("Operator status request failed");
@@ -997,6 +1062,7 @@ async function refreshOperatorStatus() {
     await loadAprsAlertSettings();
     aprsAlertSettingsLoaded = true;
   }
+  if (status.authenticated) await loadAprsGain();
   if (status.authenticated) await refreshRfCalibration().catch(() => {});
   if (status.authenticated) await loadCwopSettings().catch(() => {});
   if (status.authenticated && !ethernetSettingsLoaded) {
@@ -1105,6 +1171,10 @@ function initOperatorControls() {
   });
   document.querySelectorAll("[data-operator-action]").forEach((button) => {
     button.addEventListener("click", () => runOperatorAction(button.dataset.operatorAction, button.dataset.operatorService ? {service: button.dataset.operatorService, label: button.textContent.trim()} : {}));
+  });
+  document.querySelector("#operator-aprs-gain-save")?.addEventListener("click", saveAprsGain);
+  document.querySelector("#operator-aprs-gain")?.addEventListener("input", () => {
+    aprsGainDirty = true;
   });
   document.querySelector("#rf-calibration-start")?.addEventListener("click", async () => {
     const active = document.querySelector("#rf-calibration-state")?.textContent.startsWith("Running");
@@ -1448,6 +1518,7 @@ function initAprsFrameModal() {
 
 let aprsMap;
 let aprsMarkerLayer;
+let aprsTrackLayer;
 let aprsAllBounds;
 let aprsLocalBounds;
 let aprsMapCenter = {latitude: 38.8008, longitude: -105.2001};
@@ -1504,7 +1575,15 @@ function initAprsMap() {
     attribution: "© OpenStreetMap contributors",
   }).addTo(aprsMap);
   aprsMarkerLayer = L.featureGroup().addTo(aprsMap);
+  aprsTrackLayer = L.layerGroup().addTo(aprsMap);
   return true;
+}
+
+const aprsTrackColors = ["#e4572e", "#6a4c93", "#1982c4", "#8ac926", "#ffca3a", "#f72585", "#2a9d8f", "#8338ec"];
+function aprsTrackColor(callsign, index) {
+  let hash = 0;
+  for (const character of callsign) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return aprsTrackColors[(hash + index) % aprsTrackColors.length];
 }
 
 function stationPopup(station) {
@@ -1576,6 +1655,33 @@ function showAprsMap(payload) {
 
   if (!initAprsMap()) return;
   aprsMarkerLayer.clearLayers();
+  aprsTrackLayer?.clearLayers();
+  const trackLegend = document.querySelector("#aprs-map-track-legend");
+  const tracks = payload.tracks || {};
+  const trackEntries = Object.entries(tracks).filter(([, points]) => Array.isArray(points) && points.length >= 2);
+  if (trackLegend) {
+    trackLegend.replaceChildren();
+    trackEntries.forEach(([callsign], index) => {
+      const item = document.createElement("span");
+      item.className = "aprs-map-track-legend-item";
+      const swatch = document.createElement("i");
+      swatch.style.backgroundColor = aprsTrackColor(callsign, index);
+      const label = document.createElement("span");
+      label.textContent = callsign;
+      item.append(swatch, label);
+      trackLegend.appendChild(item);
+    });
+    trackLegend.hidden = trackEntries.length === 0;
+  }
+  trackEntries.forEach(([callsign, points], index) => {
+    const color = aprsTrackColor(callsign, index);
+    L.polyline(points.map((point) => [point.latitude, point.longitude]), {
+      color,
+      weight: 3,
+      opacity: 0.75,
+      lineJoin: "round",
+    }).bindTooltip(`${callsign} · ${points.length} ROC-heard positions`).addTo(aprsTrackLayer);
+  });
   stations.forEach((station) => {
     const icon = aprsSymbolIcon(station.symbol);
     const marker = icon
@@ -1670,7 +1776,14 @@ function initAprsMapSettings() {
 
 function showApplicationStatus(application) {
   const card = document.querySelector(`[data-application-card="${application.id}"]`);
-  const link = document.querySelector(application.id === "air_traffic" ? "#air-traffic-link" : "#scanner-link");
+  const linkIds = {
+    air_traffic: "#air-traffic-link",
+    scanner: "#scanner-link",
+    wes: "#wes-link",
+    weather: "#weather-link",
+    airband: "#airband-link",
+  };
+  const link = linkIds[application.id] ? document.querySelector(linkIds[application.id]) : null;
   const applicationState = document.querySelector(`[data-application-state="${application.id}"]`);
   if (card) card.hidden = !application.enabled;
   if (link) {

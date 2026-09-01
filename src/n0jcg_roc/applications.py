@@ -24,6 +24,24 @@ DEFAULT_APPLICATIONS = {
         "host": "192.168.68.137",
         "port": 8070,
     },
+    "wes": {
+        "name": "N0JCG Winlink Email Server",
+        "enabled": False,
+        "host": "192.168.68.149",
+        "port": 80,
+    },
+    "weather": {
+        "name": "N0JCG Weather",
+        "enabled": False,
+        "host": "192.168.68.131",
+        "port": 80,
+    },
+    "airband": {
+        "name": "N0JCG Airband",
+        "enabled": False,
+        "host": "192.168.68.141",
+        "port": 8090,
+    },
 }
 
 _SETTINGS_LOCK = Lock()
@@ -134,6 +152,24 @@ def _read_json(url: str) -> dict:
     return payload
 
 
+def _probe_application(entry: dict) -> tuple[dict, dict]:
+    """Return a health payload and derived metrics for a configured app.
+
+    WES, Weather, and Airband are standalone web applications and do not
+    share the ROC's JSON status contract.  A successful root-page response
+    is therefore the correct reachability test for those modules.
+    """
+    application_id = entry["id"]
+    if application_id in {"air_traffic", "scanner"}:
+        payload = _read_json(f"{entry['url']}/api/status")
+        metrics = _air_traffic_metrics(payload) if application_id == "air_traffic" else _scanner_metrics(payload, entry["url"])
+        return payload, metrics
+    with urlopen(entry["url"] + "/", timeout=2) as response:
+        if getattr(response, "status", 200) >= 400:
+            raise OSError(f"remote response status {response.status}")
+    return {}, {}
+
+
 def _air_traffic_metrics(payload: dict) -> dict:
     aircraft = payload.get("aircraft") if isinstance(payload.get("aircraft"), dict) else {}
     return {
@@ -173,8 +209,7 @@ def collect_application_status(path: Path) -> dict:
             result.append(entry)
             continue
         try:
-            payload = _read_json(f"{entry['url']}/api/status")
-            metrics = _air_traffic_metrics(payload) if application_id == "air_traffic" else _scanner_metrics(payload, entry["url"])
+            _payload, metrics = _probe_application(entry)
             entry.update({"state": "online", "reachable": True, "metrics": metrics})
         except (HTTPError, OSError, URLError, ValueError, json.JSONDecodeError) as error:
             entry.update({"state": "offline", "reachable": False, "metrics": {}, "error": str(error)})

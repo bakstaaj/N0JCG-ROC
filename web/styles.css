@@ -283,6 +283,10 @@ button, select { font: inherit; }
 .leaflet-control-attribution { margin: 0; padding: 2px 5px; background: rgb(255 255 255 / 80%); color: var(--n0-color-text-muted); font-size: 11px; }
 .aprs-map-message { position: absolute; inset: 50% auto auto 50%; z-index: 500; max-width: min(520px, calc(100% - 32px)); padding: 14px 18px; transform: translate(-50%, -50%); background: rgb(255 255 255 / 94%); border: 1px solid var(--n0-color-border); border-radius: var(--n0-radius-md); color: var(--n0-color-text-muted); text-align: center; box-shadow: var(--n0-shadow-md); }
 .aprs-map-message[hidden] { display: none; }
+.aprs-map-track-legend { position: absolute; left: 12px; bottom: 12px; z-index: 500; display: flex; flex-wrap: wrap; gap: 7px 12px; max-width: calc(100% - 24px); padding: 8px 10px; background: rgb(255 255 255 / 94%); border: 1px solid var(--n0-color-border); border-radius: 8px; box-shadow: var(--n0-shadow-sm); font-size: .78rem; }
+.aprs-map-track-legend[hidden] { display: none; }
+.aprs-map-track-legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.aprs-map-track-legend-item i { width: 18px; height: 3px; border-radius: 2px; }
 .aprs-map-footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 9px; color: var(--n0-color-text-muted); font-size: .74rem; }
 .aprs-map-footer span:last-child { text-align: right; }
 .aprs-marker-label { color: var(--n0-color-navy); font-weight: 700; }
@@ -344,6 +348,10 @@ button, select { font: inherit; }
 .operator-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .operator-repairs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--n0-color-border); }
 .operator-repairs strong { width: 100%; color: var(--n0-color-navy); font-size: .82rem; letter-spacing: .08em; text-transform: uppercase; }
+.operator-gain { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; width: 100%; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--n0-color-border); }
+.operator-gain label { color: var(--n0-color-text-muted); font-size: .75rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.operator-gain input { display: block; width: 120px; min-height: 42px; margin-top: 5px; padding: 7px 9px; border: 1px solid var(--n0-color-border); border-radius: var(--n0-radius-sm); color: var(--n0-color-navy); font: .9rem var(--n0-font-mono); }
+.operator-gain small { flex: 1 1 260px; color: var(--n0-color-text-muted); font-size: .72rem; }
 .operator-guard { display: block; margin-top: 10px; color: var(--n0-color-text-muted); font-size: .72rem; }
 .operator-guard.is-blocked { color: var(--n0-color-danger); font-weight: 700; }
 .operator-result { display: block; min-height: 20px; margin-top: 12px; color: var(--n0-color-success); font-size: .78rem; }

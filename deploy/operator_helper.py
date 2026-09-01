@@ -22,6 +22,7 @@ CMS_TEST = "/home/n0jcg/sdrdev/N0JCG-ROC/tools/test_linbpq_cms.py"
 WIFI_SCRIPT = "/home/n0jcg/sdrdev/N0JCG-ROC/tools/configure_wifi.sh"
 ETHERNET_SCRIPT = "/home/n0jcg/sdrdev/N0JCG-ROC/tools/configure_ethernet.sh"
 SERVICES = ("n0jcg-winlink-modem.service", "n0jcg-winlink-rms.service")
+APRS_GAIN_DROPIN = Path("/etc/systemd/system/n0jcg-aprs-rx.service.d/operator-gain.conf")
 TRIAL_SERVICES = (
     "n0jcg-aprs-rx.service",
     "n0jcg-weather.service",
@@ -123,7 +124,52 @@ def ethernet_result(action: str, arguments: list[str], timeout: int = 30) -> dic
     return {"ok": True, "action": action, "ethernet": status}
 
 
+def aprs_gain_status() -> dict:
+    """Read the operator override without exposing unrelated service settings."""
+    try:
+        text = APRS_GAIN_DROPIN.read_text(encoding="utf-8")
+    except OSError:
+        return {"ok": True, "action": "aprs_gain_status", "configured": False, "gain_db": 49.6}
+    import re
+    match = re.search(r"RTL_GAIN_DB=([0-9]+(?:\.[0-9]+)?)", text)
+    try:
+        gain = float(match.group(1)) if match else 49.6
+    except ValueError:
+        gain = 49.6
+    return {"ok": True, "action": "aprs_gain_status", "configured": bool(match), "gain_db": gain}
+
+
+def set_aprs_gain(parameters: object) -> dict:
+    if not isinstance(parameters, dict):
+        return {"ok": False, "action": "aprs_gain_set", "error": "gain setting is required"}
+    try:
+        gain = float(parameters.get("gain_db"))
+    except (TypeError, ValueError):
+        return {"ok": False, "action": "aprs_gain_set", "error": "gain must be a number from 0 to 49.6 dB"}
+    if not 0 <= gain <= 49.6:
+        return {"ok": False, "action": "aprs_gain_set", "error": "gain must be between 0 and 49.6 dB"}
+    gain_text = f"{gain:.1f}".rstrip("0").rstrip(".")
+    try:
+        APRS_GAIN_DROPIN.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        temporary = APRS_GAIN_DROPIN.with_suffix(".tmp")
+        temporary.write_text(f"[Service]\nEnvironment=RTL_GAIN_DB={gain_text}\n", encoding="utf-8")
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, APRS_GAIN_DROPIN)
+    except OSError as error:
+        return {"ok": False, "action": "aprs_gain_set", "error": f"could not save APRS gain: {error}"}
+    reload_result = run(["systemctl", "daemon-reload"], timeout=15)
+    restart_result = run(["systemctl", "restart", "n0jcg-aprs-rx.service"], timeout=30)
+    active = service_states(("n0jcg-aprs-rx.service",)).get("n0jcg-aprs-rx.service") == "active"
+    if reload_result.returncode or restart_result.returncode or not active:
+        return {"ok": False, "action": "aprs_gain_set", "gain_db": gain, "error": "gain saved, but APRS listener did not restart cleanly", "service": service_states(("n0jcg-aprs-rx.service",))}
+    return {"ok": True, "action": "aprs_gain_set", "gain_db": gain, "message": f"APRS RTL gain set to {gain_text} dB; listener restarted", "service": "active"}
+
+
 def perform(action: str, parameters: object = None) -> dict:
+    if action == "aprs_gain_status":
+        return aprs_gain_status()
+    if action == "aprs_gain_set":
+        return set_aprs_gain(parameters)
     if action == "repair_service":
         if not isinstance(parameters, dict):
             return {"ok": False, "action": action, "error": "service repair target is required"}

@@ -5,12 +5,17 @@ Wants=n0jcg-aprs-rx.service
 
 [Service]
 Type=simple
-User=n0jcg
-Group=n0jcg
+# The watchdog must be able to restart the receive-only system service after
+# repeated stale checks. It never controls Winlink or any transmit service.
+User=root
+Group=root
 WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
 Environment=APRS_RTL_SERIAL=00014439
 Environment=APRS_PIPELINE_STALE_SECONDS=180
 Environment=APRS_RF_QUIET_SECONDS=21600
+Environment=APRS_AUTO_RECOVER=1
+Environment=APRS_AUTO_RECOVER_CONFIRMATIONS=2
+Environment=APRS_AUTO_RECOVER_COOLDOWN_SECONDS=300
 EnvironmentFile=-/etc/n0jcg/admin-report.env
 # Optional: set APRS_ALERT_EMAIL in an operator drop-in to enable mail alerts.
 # Environment=APRS_ALERT_EMAIL=operator@example.com

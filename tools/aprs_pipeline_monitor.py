@@ -16,6 +16,9 @@ RUNTIME = ROOT / "runtime" / "aprs"
 STATE = RUNTIME / "pipeline-health.json"
 STALE = int(os.environ.get("APRS_PIPELINE_STALE_SECONDS", "180"))
 RF_QUIET = int(os.environ.get("APRS_RF_QUIET_SECONDS", "21600"))
+AUTO_RECOVER = os.environ.get("APRS_AUTO_RECOVER", "1") == "1"
+RECOVERY_COOLDOWN = int(os.environ.get("APRS_AUTO_RECOVER_COOLDOWN_SECONDS", "300"))
+RECOVERY_CONFIRMATIONS = max(1, int(os.environ.get("APRS_AUTO_RECOVER_CONFIRMATIONS", "2")))
 
 
 def active() -> bool:
@@ -68,7 +71,9 @@ def check() -> dict:
         pass
     if not active():
         state, summary = "fault", "RTL receiver process is not running (possible USB disconnect or Dire Wolf exit)"
-    elif age is not None and age > STALE:
+    elif age is None:
+        state, summary = "fault", "audio pipeline has not produced an audio ring"
+    elif age > STALE:
         state, summary = "fault", f"audio pipeline has not advanced for {age} seconds"
     elif rtl_errors:
         state, summary = "fault", f"RTL device error: {rtl_errors[-1]}"
@@ -97,11 +102,38 @@ def send_alert(result: dict) -> None:
         subprocess.run(["logger", "-t", "n0jcg-aprs-monitor", "email alert failed"], check=False)
 
 
+def recover_if_needed(result: dict, fault_count: int, last_recovery: float | None) -> tuple[int, float | None]:
+    """Restart only after repeated stale/fault checks and a cooldown.
+
+    A single delayed file update must not interrupt a live receiver. Recovery
+    is limited to the receive listener and never touches transmit services.
+    """
+    if result["state"] != "fault":
+        return 0, last_recovery
+    fault_count += 1
+    now = time.time()
+    if not AUTO_RECOVER or fault_count < RECOVERY_CONFIRMATIONS:
+        return fault_count, last_recovery
+    if last_recovery is not None and now - last_recovery < RECOVERY_COOLDOWN:
+        return fault_count, last_recovery
+    completed = subprocess.run(["systemctl", "restart", "n0jcg-aprs-rx.service"], capture_output=True, text=True, check=False, timeout=30)
+    if completed.returncode == 0:
+        result["auto_recovery"] = "listener restart requested"
+        subprocess.run(["logger", "-t", "n0jcg-aprs-monitor", "fault recovery: restarted n0jcg-aprs-rx.service"], check=False)
+    else:
+        result["auto_recovery"] = "listener restart failed"
+        subprocess.run(["logger", "-t", "n0jcg-aprs-monitor", "fault recovery failed"], check=False)
+    return 0, now
+
+
 def main() -> None:
     RUNTIME.mkdir(parents=True, exist_ok=True)
     previous = None
+    fault_count = 0
+    last_recovery = None
     while True:
         result = check()
+        fault_count, last_recovery = recover_if_needed(result, fault_count, last_recovery)
         STATE.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
         if result["state"] != previous:
             try:

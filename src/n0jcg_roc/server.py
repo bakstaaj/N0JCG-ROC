@@ -55,6 +55,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WEB_ROOT = PROJECT_ROOT / "web"
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "station.toml"
 APRS_LOG_PATH = PROJECT_ROOT / "runtime" / "aprs" / "packets.log"
+APRS_RECORDS_PATH = PROJECT_ROOT / "runtime" / "aprs" / "packet-records.jsonl"
 APRS_JOURNAL_UNIT = os.environ.get("APRS_JOURNAL_UNIT", "n0jcg-aprs-rx.service")
 _APRS_RECORD_CACHE_LOCK = threading.Lock()
 _APRS_RECORD_CACHE: dict[int, tuple[float, list[dict]]] = {}
@@ -289,6 +290,18 @@ def collect_aprs_frame_records(*, runner=None, max_lines: int = 50000) -> list[d
         records = []
     if not records:
         try:
+            sidecar = APRS_RECORDS_PATH.read_text(encoding="utf-8", errors="replace").splitlines()[-max_lines:]
+            records = []
+            for line in sidecar:
+                item = json.loads(line)
+                frame = str(item.get("frame") or "").strip()
+                timestamp = str(item.get("timestamp_utc") or "")
+                if APRS_FRAME_PATTERN.match(frame) and timestamp:
+                    records.append({"frame": frame, "origin": aprs_frame_origin(frame), "timestamp_utc": timestamp})
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            records = []
+    if not records:
+        try:
             lines = APRS_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()
             timestamp = datetime.fromtimestamp(APRS_LOG_PATH.stat().st_mtime, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         except OSError:
@@ -360,7 +373,9 @@ def collect_aprs_pipeline_health(records: list[dict] | None = None) -> dict:
     state = "healthy"
     if not active:
         state, reasons = "fault", ["RTL receiver process is not running"]
-    elif audio_path.exists() and (pipeline_age_seconds is None or pipeline_age_seconds > APRS_PIPELINE_STALE_SECONDS):
+    elif not audio_path.exists():
+        state, reasons = "fault", ["audio pipeline has not produced an audio ring"]
+    elif pipeline_age_seconds is None or pipeline_age_seconds > APRS_PIPELINE_STALE_SECONDS:
         state, reasons = "fault", [f"audio pipeline has not advanced for {pipeline_age_seconds or 'an unknown number of'} seconds"]
     elif rf_age_seconds is None or rf_age_seconds > APRS_RF_QUIET_SECONDS:
         state = "degraded"
@@ -814,6 +829,15 @@ class RocRequestHandler(BaseHTTPRequestHandler):
                         raise ValueError("service repair target is invalid")
                     parameters = {"service": service}
                     helper_timeout = 45.0
+                elif action == "aprs_gain_set":
+                    try:
+                        gain = float(payload.get("gain_db"))
+                    except (TypeError, ValueError):
+                        raise ValueError("gain must be a number from 0 to 49.6 dB")
+                    if not 0 <= gain <= 49.6:
+                        raise ValueError("gain must be between 0 and 49.6 dB")
+                    parameters = {"gain_db": gain}
+                    helper_timeout = 50.0
                 result = request_helper(action, self.server.operator_socket_path, helper_timeout, parameters)
             except (OSError, ValueError, TypeError, json.JSONDecodeError, UnicodeError) as error:
                 append_audit(self.server.operator_audit_path, remote=self.client_address[0], event="operator_action", result="failed", detail=str(error))

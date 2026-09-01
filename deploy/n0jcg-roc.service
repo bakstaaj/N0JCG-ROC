@@ -1,7 +1,7 @@
 [Unit]
 Description=N0JCG Radio Operations Center
-After=network-online.target n0jcg-operator-helper.service
-Wants=network-online.target n0jcg-operator-helper.service
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
