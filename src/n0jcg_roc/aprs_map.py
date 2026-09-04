@@ -264,6 +264,22 @@ def collect_aprs_map(
 ) -> dict:
     now_epoch = time.time()
     cutoff_epoch = now_epoch - (APRS_MAP_WINDOW_HOURS * 60 * 60)
+    settings = load_aprsfi_settings(settings_path)
+    # Do not touch journalctl (or any external service) when the integration
+    # is disabled or has no API key. This endpoint is intentionally fast in
+    # its unconfigured state and avoids blocking callers on a slow journal.
+    if not settings["enabled"] or not settings["api_key"]:
+        return {
+            "configured": bool(settings["api_key"]),
+            "enabled": settings["enabled"],
+            "callsigns_heard": [], "callsign_count": 0, "frame_count": 0,
+            "window_hours": APRS_MAP_WINDOW_HOURS,
+            "window_start_utc": datetime.fromtimestamp(cutoff_epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "activity_source": "not-queried",
+            "stations": [], "tracks": {}, "source": "aprs.fi",
+            "source_url": APRSFI_SOURCE_URL, "max_callsigns": APRSFI_MAX_CALLSIGNS,
+            "message": "aprs.fi map integration is disabled." if not settings["enabled"] else "Enter an aprs.fi API key to display station positions.",
+        }
     activity = recent_heard_activity(APRS_MAP_WINDOW_HOURS)
     callsigns = activity["callsigns"]
     base = {
@@ -280,7 +296,6 @@ def collect_aprs_map(
         "source_url": APRSFI_SOURCE_URL,
         "max_callsigns": APRSFI_MAX_CALLSIGNS,
     }
-    settings = load_aprsfi_settings(settings_path)
     api_key = settings["api_key"]
     base["enabled"] = settings["enabled"]
     if not settings["enabled"]:
