@@ -1506,15 +1506,20 @@ function showAprs(aprs) {
   const historyChart = document.querySelector("#aprs-rf-history-chart");
   if (historyChart) {
     historyChart.replaceChildren();
-    const points = (history.points || []).slice(-24);
+    const points = (history.points || []).slice(-168);
     const maximum = Math.max(1, ...points.map((point) => Number(point.rf_frames || 0)));
-    points.forEach((point) => {
-      const bar = document.createElement("span");
-      bar.className = "aprs-rf-history-bar";
-      bar.style.height = `${Math.max(4, (Number(point.rf_frames || 0) / maximum) * 100)}%`;
-      bar.title = `${point.hour_utc}: ${point.rf_frames || 0} frames`;
-      historyChart.appendChild(bar);
+    const width = 720; const height = 120; const padding = 6;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("preserveAspectRatio", "none");
+    const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    const coordinates = points.map((point, index) => {
+      const x = points.length > 1 ? (index / (points.length - 1)) * (width - padding * 2) + padding : width / 2;
+      const y = height - padding - (Number(point.rf_frames || 0) / maximum) * (height - padding * 2);
+      return `${x},${y}`;
     });
+    polyline.setAttribute("points", coordinates.join(" ")); polyline.setAttribute("class", "aprs-rf-history-line"); svg.appendChild(polyline);
+    points.forEach((point, index) => { const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle"); const [x, y] = coordinates[index].split(","); circle.setAttribute("cx", x); circle.setAttribute("cy", y); circle.setAttribute("r", points.length > 72 ? "1.5" : "2.5"); circle.setAttribute("class", "aprs-rf-history-point"); circle.setAttribute("aria-label", `${point.hour_utc}: ${point.rf_frames || 0} frames`); circle.dataset.label = `${point.hour_utc}: ${point.rf_frames || 0} frames`; svg.appendChild(circle); });
+    historyChart.appendChild(svg);
   }
 }
 
