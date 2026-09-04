@@ -15,6 +15,7 @@ RUNTIME_CONFIG_PATH = Path("/var/lib/n0jcg-winlink/bpq32.cfg")
 MAIL_STORE_PATH = Path("/var/lib/n0jcg-winlink/Mail")
 MESSAGE_INDEX_PATH = Path("/var/lib/n0jcg-winlink/DIRMES.SYS")
 STATUS_CACHE_PATH = Path("/var/lib/n0jcg-roc/winlink-status.json")
+APPLICATION_EVENT_LOG_PATH = Path("/var/lib/n0jcg-roc/winlink-application-events.jsonl")
 PROTOCOL_STATE_PATH = Path("/var/lib/n0jcg-roc/winlink-protocol-health.json")
 PTT_DEVICE_PATH = Path(
     "/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_30217bb31dc6ef11ba3469527a5e3baa-if00-port0"
@@ -27,6 +28,7 @@ BPQ_MESSAGE_SOURCE_FLAGS = 4 | 8 | 16 | 32 | 64
 KISS_SESSION_PATTERN = re.compile(
     r"^KISS Session Stats Port \d+ (?P<caller>\S+) (?P<gateway>\S+) "
     r"(?P<duration>\d+) secs Bytes Sent (?P<sent>\d+) .*? Bytes Received (?P<received>\d+) "
+    r"(?:.*?Messages Sent (?P<messages_sent>\d+) .*?Messages Received (?P<messages_received>\d+))?"
 )
 PROTOCOL_TOKEN_PATTERN = re.compile(r"(?<![A-Z0-9])(F>|FW|PR|PQ|FF|PM|FC|FS)(?![A-Z0-9])", re.IGNORECASE)
 
@@ -182,6 +184,42 @@ def summarize_mail_index(path: Path = MESSAGE_INDEX_PATH) -> dict:
     return result
 
 
+def summarize_application_events(path: Path = APPLICATION_EVENT_LOG_PATH, *, limit: int = 2000) -> dict:
+    """Summarize LinBPQ mail events without exposing event arguments/content."""
+    counts = {"message_new": 0, "message_read": 0, "message_store_change": 0, "index_changed": 0, "application_event": 0}
+    last_event = None
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-limit:]
+    except OSError:
+        lines = []
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        event = record.get("event")
+        timestamp = record.get("timestamp_utc")
+        if event not in counts or not isinstance(timestamp, str):
+            continue
+        try:
+            counts[event] += max(1, int(record.get("count", 1)))
+        except (TypeError, ValueError):
+            counts[event] += 1
+        last_event = {"event": event, "timestamp_utc": timestamp}
+    return {
+        "available": bool(lines),
+        "events_observed": sum(counts.values()),
+        "message_new": counts["message_new"],
+        "message_read": counts["message_read"],
+        "message_store_change": counts["message_store_change"],
+        "index_changed": counts["index_changed"],
+        "last_event": last_event,
+        "privacy": "Event type and timestamp only; message content and arguments are excluded.",
+    }
+
+
 def _utc_iso(value: str) -> str | None:
     try:
         parsed = datetime.fromisoformat(value)
@@ -256,8 +294,10 @@ def parse_linbpq_journal(lines: list[str]) -> dict:
                 "mode": "Packet 1200",
                 "frequency_hz": 0,
                 "duration_seconds": int(kiss.group("duration")),
-                "messages_sent": 0,
-                "messages_received": 0,
+                # Older LinBPQ KISS statistics do not report message counts.
+                # Preserve that distinction instead of presenting false zeroes.
+                "messages_sent": int(kiss.group("messages_sent")) if kiss.group("messages_sent") else None,
+                "messages_received": int(kiss.group("messages_received")) if kiss.group("messages_received") else None,
                 "bytes_sent": sent,
                 "bytes_received": received,
                 "successful": bool(sent or received),
@@ -291,8 +331,6 @@ def parse_linbpq_journal(lines: list[str]) -> dict:
             frequency_hz = int(payload.get("Frequency", 0) or 0)
         except (TypeError, ValueError):
             frequency_hz = 0
-        if frequency_hz <= 0:
-            continue
         session = {
             "timestamp_utc": timestamp_utc,
             "caller": payload.get("Client"),
@@ -305,6 +343,7 @@ def parse_linbpq_journal(lines: list[str]) -> dict:
             "bytes_sent": payload.get("BytesSent", 0),
             "bytes_received": payload.get("BytesReceived", 0),
             "successful": payload.get("LastCommand") == "FQ",
+            "source": "bpq32-cms-report",
         }
         sessions.append(session)
         commissioning["rf_path_verified"] = True
@@ -480,7 +519,7 @@ def merge_sessions(cached: list[dict], observed: list[dict], limit: int = 500) -
         if not isinstance(session, dict) or not session.get("timestamp_utc"):
             continue
         try:
-            if int(session.get("frequency_hz", 0) or 0) <= 0:
+            if int(session.get("frequency_hz", 0) or 0) <= 0 and session.get("source") != "bpq32-cms-report":
                 continue
         except (TypeError, ValueError):
             continue
@@ -537,6 +576,7 @@ def collect_winlink_status(
     config_path: Path = RUNTIME_CONFIG_PATH,
     mail_store_path: Path = MAIL_STORE_PATH,
     message_index_path: Path = MESSAGE_INDEX_PATH,
+    application_event_log_path: Path = APPLICATION_EVENT_LOG_PATH,
     cache_path: Path = STATUS_CACHE_PATH,
     runner: Callable[[list[str]], str] = _run,
 ) -> dict:
@@ -552,9 +592,11 @@ def collect_winlink_status(
         "--no-pager", "--quiet", "-o", "short-iso",
     ])
     activity = parse_linbpq_journal(journal.splitlines())
-    # KISS session statistics do not carry the frequency; the active runtime
-    # configuration supplies it so they participate in the same ledger.
-    for session in activity["sessions"]:
+    # KISS statistics provide the fallback session row. They do not carry
+    # message counts, so the UI renders those fields as unknown; BPQ32/CMS
+    # reports take precedence whenever they are present.
+    observed_sessions = activity["sessions"]
+    for session in observed_sessions:
         if not session.get("frequency_hz"):
             session["frequency_hz"] = runtime.get("frequency_hz") or 0
     reliability = summarize_gateway_reliability(
@@ -570,8 +612,9 @@ def collect_winlink_status(
         for key, value in activity["commissioning"].items()
     }
     cached_sessions = cached.get("sessions", []) if isinstance(cached.get("sessions", []), list) else []
-    sessions = merge_sessions(cached_sessions, activity["sessions"])
-    last_session = sessions[-1] if sessions else activity["last_session"] or cached.get("last_session")
+    sessions = merge_sessions(cached_sessions, observed_sessions)
+    cached_last = cached.get("last_session") if isinstance(cached.get("last_session"), dict) else None
+    last_session = sessions[-1] if sessions else cached_last
     statistics_24h = summarize_sessions(sessions)
     reliability["cms_connections"] = max(
         reliability["cms_connections"], statistics_24h["successful_sessions"],
@@ -593,6 +636,7 @@ def collect_winlink_status(
     except OSError:
         stored_messages = 0
     message_counts = summarize_mail_index(message_index_path)
+    application_events = summarize_application_events(application_event_log_path)
     post_office_online = _port_listening(8772)
     operational = rms_service["active"] and modem_service["active"] and bool(runtime["rms_call"])
     return {
@@ -614,6 +658,7 @@ def collect_winlink_status(
         "reliability": reliability,
         "protocol_watchdog": _load_protocol_state(),
         "rf_diagnostics": rf_diagnostics,
+        "application_events": application_events,
         "queues": {
             "local_message_store": stored_messages,
             "pending": message_counts["pending"],

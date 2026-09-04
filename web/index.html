@@ -195,7 +195,7 @@
               <strong id="winlink-session-caller">—</strong>
               <p id="winlink-session-time">No completed RF session recorded</p>
               <dl class="winlink-facts">
-                <div><dt>Messages</dt><dd id="winlink-session-messages">—</dd></div>
+                <div><dt>Message count</dt><dd id="winlink-session-messages">Not reported by KISS</dd></div>
                 <div><dt>Transfer</dt><dd id="winlink-session-bytes">—</dd></div>
                 <div><dt>Duration</dt><dd id="winlink-session-duration">—</dd></div>
                 <div><dt>CMS</dt><dd id="winlink-cms-state">—</dd></div>
@@ -233,8 +233,8 @@
               <div><span>Unique callsigns</span><strong id="winlink-stat-callsigns">—</strong></div>
               <div><span>Success rate</span><strong id="winlink-stat-success">—</strong></div>
               <div><span>Average duration</span><strong id="winlink-stat-duration">—</strong></div>
-              <div><span>Messages sent</span><strong id="winlink-stat-sent">—</strong></div>
-              <div><span>Messages received</span><strong id="winlink-stat-received">—</strong></div>
+              <div><span>Bytes sent</span><strong id="winlink-stat-sent">—</strong></div>
+              <div><span>Bytes received</span><strong id="winlink-stat-received">—</strong></div>
             </div>
             <div id="winlink-hourly-chart" class="winlink-hourly-chart" role="img" aria-label="Winlink RF sessions by hour over the last 24 hours"></div>
           </div>
@@ -314,6 +314,14 @@
             <article class="application-card" data-application-card="airband">
               <img src="/assets/N0JCG_Icon_Approved.png" alt="">
               <div><h3>N0JCG Airband</h3><p>Standalone civil airband receiver and monitoring.</p><span class="application-state" data-application-state="airband">Checking</span><a id="airband-link" class="n0-button n0-button--primary" href="#">Open Airband</a></div>
+            </article>
+            <article class="application-card application-card--protected" data-service-card="aprs_igate">
+              <img src="/assets/N0JCG_Icon_Approved.png" alt="">
+              <div><h3>APRS iGate</h3><p>Receive-only APRS decoding and APRS-IS upload from the ROC.</p><span class="application-state" data-service-state="aprs_igate">Operator login required</span><button class="n0-button n0-button--primary" type="button" data-service-toggle="aprs_igate" disabled>Enable APRS iGate</button></div>
+            </article>
+            <article class="application-card application-card--protected" data-service-card="rms">
+              <img src="/assets/N0JCG_Icon_Approved.png" alt="">
+              <div><h3>RMS tools</h3><p>Winlink modem and RMS gateway services on the ROC.</p><span class="application-state" data-service-state="rms">Operator login required</span><button class="n0-button n0-button--primary" type="button" data-service-toggle="rms" disabled>Enable RMS tools</button></div>
             </article>
           </div>
         </section>
@@ -525,7 +533,7 @@
         </div>
         <div class="winlink-session-table-wrap">
           <table class="winlink-session-table">
-            <thead><tr><th>Time</th><th>Callsign</th><th>Result</th><th>Duration</th><th>Messages</th><th>Transfer</th></tr></thead>
+            <thead><tr><th>Time</th><th>Callsign</th><th>Result</th><th>Duration</th><th>KISS message count</th><th>Transfer</th></tr></thead>
             <tbody id="winlink-session-list"></tbody>
           </table>
         </div>

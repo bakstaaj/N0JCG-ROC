@@ -15,7 +15,7 @@ fi
 if [[ "${1:-}" == '--check-only' ]]; then MODE=check; elif [[ $# -ne 0 ]]; then echo 'Usage: deploy.sh [--check-only]'; exit 2; fi
 [[ "${ROC_PORT}" =~ ^[0-9]+$ ]] && (( ROC_PORT >= 1 && ROC_PORT <= 65535 )) || { echo 'FINAL: FAIL - invalid ROC_PORT'; exit 1; }
 [[ "${ROC_REMOTE_DIR}" == '/home/n0jcg/sdrdev/N0JCG-ROC' ]] || { echo 'FINAL: FAIL - unexpected ROC_REMOTE_DIR'; exit 1; }
-for required in README.md web/index.html web/styles.css web/app.js deploy/n0jcg-roc.service deploy/n0jcg-admin-report.service deploy/n0jcg-aprs-rx.service deploy/n0jcg-aprs-monitor.service deploy/n0jcg-weather.service deploy/n0jcg-cwop-weather.service deploy/n0jcg-operator-helper.service deploy/n0jcg-winlink-rms.service deploy/n0jcg-winlink-watchdog.service deploy/n0jcg-vara-fm.service deploy/run-vara-fm.sh deploy/operator_helper.py src/n0jcg_roc/operator_activity.py deploy/configure_operator_controls.sh deploy/configure_admin_report_email.sh tools/validate.sh tools/aprs_config_backup.py tools/cwop_weather_uploader.py tools/winlink_protocol_watchdog.py tools/capture_winlink_kiss.sh; do
+for required in README.md web/index.html web/styles.css web/app.js deploy/n0jcg-roc.service deploy/n0jcg-admin-report.service deploy/n0jcg-aprs-rx.service deploy/n0jcg-aprs-monitor.service deploy/n0jcg-weather.service deploy/n0jcg-cwop-weather.service deploy/n0jcg-rms-aprs-beacon.service deploy/n0jcg-operator-helper.service deploy/n0jcg-winlink-rms.service deploy/n0jcg-winlink-mail-monitor.service deploy/n0jcg-winlink-watchdog.service deploy/n0jcg-vara-fm.service deploy/run-vara-fm.sh deploy/operator_helper.py src/n0jcg_roc/operator_activity.py deploy/configure_operator_controls.sh deploy/configure_admin_report_email.sh tools/validate.sh tools/aprs_config_backup.py tools/cwop_weather_uploader.py tools/aprs_rms_beacon.py tools/winlink_protocol_watchdog.py tools/capture_winlink_kiss.sh tools/winlink_mail_event_logger.py tools/winlink_mail_store_monitor.py; do
   [[ -f "${PROJECT_DIR}/${required}" ]] || { echo "FINAL: FAIL - missing ${required}"; exit 1; }
 done
 [[ -f "${ROC_IDENTITY_FILE}" ]] || { echo 'FINAL: FAIL - run deploy/setup_server_auth.sh first'; exit 1; }
@@ -38,13 +38,33 @@ if ! check_sudo_password; then
   check_sudo_password || { echo 'FINAL: FAIL - ROC sudo password was rejected; no files were deployed' >&2; exit 1; }
 fi
 stage_dir="$(mktemp -d)"; trap 'rm -rf "${stage_dir}"' EXIT
-rsync -a --exclude=.git --exclude=.server.env --exclude=config/station.toml --exclude=__pycache__ --exclude=runtime "${PROJECT_DIR}/" "${stage_dir}/"
+# Keep the deployment tree source-only. Runtime captures, drive-test archives,
+# release bundles, and local build caches can be hundreds of megabytes and are
+# not needed by the ROC service. They remain on the development workstation.
+DEPLOY_EXCLUDES=(
+  --exclude=.git
+  --exclude=.server.env
+  --exclude=config/station.toml
+  --exclude=__pycache__
+  --exclude=.pytest_cache
+  --exclude=runtime
+  --exclude=drive-tests
+  --exclude=build
+  --exclude=dist
+  --exclude=releases
+  --exclude='*.tgz'
+  --exclude='*.tar.gz'
+  --exclude='*.zip'
+  --exclude='*.wav'
+)
+rsync -a "${DEPLOY_EXCLUDES[@]}" "${PROJECT_DIR}/" "${stage_dir}/"
 # The remote tree may contain root-owned service artifacts from an earlier
 # install. Transfer content and timestamps, but never require the SSH user to
 # preserve permissions, owner, or group metadata on existing files.
-rsync -rltz --no-perms --no-owner --no-group --delete --exclude=config/station.toml --exclude=runtime -e "${RSYNC_SSH}" "${stage_dir}/" "${ROC_USER}@${ROC_HOST}:${ROC_REMOTE_DIR}/"
+rsync -rltz --no-perms --no-owner --no-group --delete "${DEPLOY_EXCLUDES[@]}" -e "${RSYNC_SSH}" "${stage_dir}/" "${ROC_USER}@${ROC_HOST}:${ROC_REMOTE_DIR}/"
 "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "cd ${ROC_REMOTE_DIR} && if [ ! -f config/station.toml ]; then cp config/station.example.toml config/station.toml; fi && chmod +x tools/*.sh deploy/*.sh && ./tools/validate.sh"
-printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -d -m 0755 /usr/local/libexec/n0jcg && install -m 0644 ${ROC_REMOTE_DIR}/src/n0jcg_roc/operator_activity.py /usr/local/libexec/n0jcg/operator_activity.py && install -m 0755 ${ROC_REMOTE_DIR}/deploy/operator_helper.py /usr/local/libexec/n0jcg/operator_helper.py && install -m 0755 ${ROC_REMOTE_DIR}/deploy/run-vara-fm.sh /usr/local/libexec/n0jcg/run-vara-fm.sh && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-operator-helper.service /etc/systemd/system/n0jcg-operator-helper.service && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-vara-fm.service /etc/systemd/system/n0jcg-vara-fm.service && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-winlink-watchdog.service /etc/systemd/system/n0jcg-winlink-watchdog.service && systemctl daemon-reload && systemctl enable n0jcg-operator-helper.service n0jcg-vara-fm.service n0jcg-winlink-watchdog.service && systemctl restart n0jcg-operator-helper.service n0jcg-vara-fm.service n0jcg-winlink-watchdog.service'"
+printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -d -m 0755 /usr/local/libexec/n0jcg && install -m 0644 ${ROC_REMOTE_DIR}/src/n0jcg_roc/operator_activity.py /usr/local/libexec/n0jcg/operator_activity.py && install -m 0755 ${ROC_REMOTE_DIR}/deploy/operator_helper.py /usr/local/libexec/n0jcg/operator_helper.py && install -m 0755 ${ROC_REMOTE_DIR}/tools/aprs_rms_beacon.py /usr/local/libexec/n0jcg-rms-aprs-beacon.py && install -m 0755 ${ROC_REMOTE_DIR}/tools/winlink_mail_event_logger.py /usr/local/libexec/n0jcg-winlink-mail-event.py && install -m 0755 ${ROC_REMOTE_DIR}/deploy/run-vara-fm.sh /usr/local/libexec/n0jcg/run-vara-fm.sh && install -d -o n0jcg -g n0jcg -m 0755 /var/lib/n0jcg-winlink && ln -sfn /usr/local/libexec/n0jcg-winlink-mail-event.py /var/lib/n0jcg-winlink/MailNewMsg && ln -sfn /usr/local/libexec/n0jcg-winlink-mail-event.py /var/lib/n0jcg-winlink/MailMsgRead && chown -h n0jcg:n0jcg /var/lib/n0jcg-winlink/MailNewMsg /var/lib/n0jcg-winlink/MailMsgRead && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-operator-helper.service /etc/systemd/system/n0jcg-operator-helper.service && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-rms-aprs-beacon.service /etc/systemd/system/n0jcg-rms-aprs-beacon.service && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-vara-fm.service /etc/systemd/system/n0jcg-vara-fm.service && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-winlink-watchdog.service /etc/systemd/system/n0jcg-winlink-watchdog.service && systemctl daemon-reload && systemctl enable n0jcg-operator-helper.service n0jcg-rms-aprs-beacon.service n0jcg-vara-fm.service n0jcg-winlink-watchdog.service && systemctl restart n0jcg-operator-helper.service n0jcg-rms-aprs-beacon.service n0jcg-vara-fm.service n0jcg-winlink-watchdog.service'"
+printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -m 0755 ${ROC_REMOTE_DIR}/tools/winlink_mail_store_monitor.py /usr/local/libexec/n0jcg-winlink-mail-store-monitor.py && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-winlink-mail-monitor.service /etc/systemd/system/n0jcg-winlink-mail-monitor.service && systemctl daemon-reload && systemctl enable --now n0jcg-winlink-mail-monitor.service'"
 printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -d -o n0jcg -g n0jcg -m 0755 /var/lib/n0jcg-roc && chown n0jcg:n0jcg /var/lib/n0jcg-roc && if [ -e /var/lib/n0jcg-roc/cwop.json ]; then chown n0jcg:n0jcg /var/lib/n0jcg-roc/cwop.json; fi && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-roc.service /etc/systemd/system/n0jcg-roc.service && systemctl daemon-reload && systemctl enable n0jcg-roc.service && systemctl restart n0jcg-roc.service'"
 printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-aprs-rx.service /etc/systemd/system/n0jcg-aprs-rx.service && install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-aprs-monitor.service /etc/systemd/system/n0jcg-aprs-monitor.service && systemctl daemon-reload && systemctl enable n0jcg-aprs-rx.service n0jcg-aprs-monitor.service && systemctl restart n0jcg-aprs-rx.service n0jcg-aprs-monitor.service'"
 printf '%s\n' "${ROC_SUDO_PASS}" | "${SSH[@]}" "${ROC_USER}@${ROC_HOST}" "sudo -S -p '' sh -c 'install -m 0644 ${ROC_REMOTE_DIR}/deploy/n0jcg-weather.service /etc/systemd/system/n0jcg-weather.service && systemctl daemon-reload && systemctl enable n0jcg-weather.service && systemctl restart n0jcg-weather.service'"

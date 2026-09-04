@@ -34,9 +34,10 @@ local Dire Wolf record.
 
 The receiver must be tuned to the canonical APRS channel. Start the Blog V4
 with zero PPM correction and measure a correction only if a known reference
-proves one is needed. The installed ROC driver does not support rtl_fm's
-optional offset-tuning mode reliably, so the APRS path uses direct tuning with
-the DC correction enabled:
+proves one is needed. The APRS path uses direct tuning with the DC correction
+enabled. Do not add `-E offset`: the installed ROC Blog V4 driver rejects
+hardware offset-tuning and logs `WARNING: Failed to set offset tuning.` This is
+not a 252 kHz frequency correction. The old 144.138 MHz workaround was wrong.
 
 | Parameter | Current value | Purpose |
 |---|---:|---|
@@ -48,7 +49,7 @@ the DC correction enabled:
 | Sample rates | `-s 48000 -r 48000` | Dire Wolf audio handoff |
 | RTL gain | `20` dB | Current starting field value |
 
-Effective command:
+Effective command (intentionally no `-E offset`):
 
 ```text
 rtl_fm -d 00014439 -f 144390000 -M fm -E dc -p 0 -s 48000 -r 48000 -g 20 -
@@ -109,7 +110,7 @@ APRS_IGATE_PORT=14580
 APRS_IGATE_LOGIN=<iGate callsign, normally N0JCG-5>
 APRS_IGATE_PASSCODE=<secret passcode>
 APRS_IGATE_BEACON_ENABLED=1
-APRS_IGATE_BEACON_INTERVAL=720:00
+APRS_IGATE_BEACON_INTERVAL=30:00
 APRS_IGATE_BEACON_COMMENT=N0JCG ROC RX-only iGate 144.390 MHz https://n0jcg.com
 ```
 
@@ -201,6 +202,15 @@ frame was direct or relayed. Do not use APRS-IS alone to claim ROC coverage.
 6. Measure antenna SWR at 144.390 MHz. A 2:1 mismatch is only about 0.5 dB
    loss, so a large range problem also warrants coax/filter/decoder checks.
 7. Archive each gain or antenna change so results are reproducible.
+
+### Frequency and offset guardrail
+
+The only supported APRS frequency is `144390000` Hz. `-p` is RTL crystal
+correction in parts per million and should change only from a measured
+reference. `-E dc` is the software DC-blocking filter. `-E offset` is a
+separate driver/hardware mode and is deliberately not used because this ROC
+driver reports it unsupported. A 252 kHz subtraction belongs only to the
+legacy Winlink dummy-load capture helper, not APRS reception.
 
 ## Deployment and safety
 

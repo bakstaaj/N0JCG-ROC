@@ -29,6 +29,14 @@ class AprsObservabilityTests(unittest.TestCase):
         self.assertEqual(result["authentication"], "verified")
         self.assertEqual(result["server"], "rotate.aprs2.net")
 
+    def test_packet_quality_handles_equal_timestamps(self):
+        records = [
+            {"origin": "rf", "frame": "[0.2] N0AAA>APRS:one", "timestamp_utc": "2026-08-18T00:00:00Z"},
+            {"origin": "rf", "frame": "[0.3] N0BBB>APRS:two", "timestamp_utc": "2026-08-18T00:00:00Z"},
+        ]
+        result = packet_quality(records)
+        self.assertEqual(result["last_rf_frame_utc"], "2026-08-18T00:00:00Z")
+
     def test_rf_history_is_bounded_and_hourly(self):
         with tempfile.TemporaryDirectory() as directory:
             result = update_rf_history(Path(directory) / "history.json", [

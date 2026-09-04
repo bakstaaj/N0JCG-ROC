@@ -23,6 +23,8 @@ WIFI_SCRIPT = "/home/n0jcg/sdrdev/N0JCG-ROC/tools/configure_wifi.sh"
 ETHERNET_SCRIPT = "/home/n0jcg/sdrdev/N0JCG-ROC/tools/configure_ethernet.sh"
 SERVICES = ("n0jcg-winlink-modem.service", "n0jcg-winlink-rms.service")
 APRS_GAIN_DROPIN = Path("/etc/systemd/system/n0jcg-aprs-rx.service.d/operator-gain.conf")
+APRS_IGATE_DROPIN = Path("/etc/systemd/system/n0jcg-aprs-rx.service.d/zz-igate-toggle.conf")
+APRS_IGATE_CREDENTIALS = Path("/etc/n0jcg/aprs-igate.env")
 TRIAL_SERVICES = (
     "n0jcg-aprs-rx.service",
     "n0jcg-weather.service",
@@ -165,11 +167,89 @@ def set_aprs_gain(parameters: object) -> dict:
     return {"ok": True, "action": "aprs_gain_set", "gain_db": gain, "message": f"APRS RTL gain set to {gain_text} dB; listener restarted", "service": "active"}
 
 
+def aprs_igate_enabled() -> bool:
+    active_environment = run(["systemctl", "show", "n0jcg-aprs-rx.service", "-p", "Environment"], timeout=5).stdout
+    if "APRS_IGATE_ENABLED=1" in active_environment:
+        return True
+    try:
+        return "APRS_IGATE_ENABLED=1" in APRS_IGATE_DROPIN.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
+def aprs_igate_status() -> dict:
+    return {"ok": True, "action": "aprs_igate_status", "enabled": aprs_igate_enabled(), "service": service_states(("n0jcg-aprs-rx.service",)).get("n0jcg-aprs-rx.service", "unknown")}
+
+
+def rms_status() -> dict:
+    states = service_states()
+    return {"ok": True, "action": "rms_status", "enabled": all(states.get(service) == "active" for service in SERVICES), "services": states}
+
+
+def set_aprs_igate(enabled: bool) -> dict:
+    action = "aprs_igate_enable" if enabled else "aprs_igate_disable"
+    if enabled:
+        try:
+            credentials = APRS_IGATE_CREDENTIALS.read_text(encoding="utf-8")
+        except OSError:
+            return {"ok": False, "action": action, "error": "APRS-IS credentials are not configured in /etc/n0jcg/aprs-igate.env"}
+        values = {line.split("=", 1)[0]: line.split("=", 1)[1].strip() for line in credentials.splitlines() if "=" in line}
+        if not values.get("APRS_IGATE_LOGIN") or not values.get("APRS_IGATE_PASSCODE"):
+            return {"ok": False, "action": action, "error": "APRS-IS login/passcode are incomplete"}
+    try:
+        APRS_IGATE_DROPIN.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        if enabled:
+            temporary = APRS_IGATE_DROPIN.with_suffix(".tmp")
+            temporary.write_text("[Service]\nEnvironment=APRS_IGATE_ENABLED=1\n", encoding="utf-8")
+            os.chmod(temporary, 0o644)
+            os.replace(temporary, APRS_IGATE_DROPIN)
+        else:
+            temporary = APRS_IGATE_DROPIN.with_suffix(".tmp")
+            temporary.write_text("[Service]\nEnvironment=APRS_IGATE_ENABLED=0\n", encoding="utf-8")
+            os.chmod(temporary, 0o644)
+            os.replace(temporary, APRS_IGATE_DROPIN)
+    except OSError as error:
+        return {"ok": False, "action": action, "error": f"could not save APRS-IS setting: {error}"}
+    reload_result = run(["systemctl", "daemon-reload"], timeout=15)
+    restart_result = run(["systemctl", "restart", "n0jcg-aprs-rx.service"], timeout=30)
+    active = service_states(("n0jcg-aprs-rx.service",)).get("n0jcg-aprs-rx.service") == "active"
+    if reload_result.returncode or restart_result.returncode or not active:
+        return {"ok": False, "action": action, "enabled": enabled, "error": "setting saved, but APRS listener did not restart cleanly", "service": service_states(("n0jcg-aprs-rx.service",))}
+    return {"ok": True, "action": action, "enabled": enabled, "message": f"APRS-IS iGate {'enabled' if enabled else 'disabled'}; listener restarted", "service": "active"}
+
+
+def set_rms_enabled(enabled: bool) -> dict:
+    action = "rms_enable" if enabled else "rms_disable"
+    if enabled:
+        activity = probe_rf_session()
+        if not activity.get("available"):
+            return {"ok": False, "action": action, "error": "RMS start blocked: RF activity state is unavailable", "rf_activity": activity}
+        if activity.get("active"):
+            return {"ok": False, "action": action, "error": "RMS start blocked: an RF session is active", "rf_activity": activity}
+    commands = [["systemctl", "start" if enabled else "stop", service] for service in (("n0jcg-winlink-modem.service", "n0jcg-winlink-rms.service") if enabled else ("n0jcg-winlink-rms.service", "n0jcg-winlink-modem.service"))]
+    for command in commands:
+        if run(command, timeout=30).returncode != 0:
+            return {"ok": False, "action": action, "error": "RMS service operation failed", "services": service_states()}
+    return {"ok": True, "action": action, "enabled": enabled, "message": f"RMS tools {'enabled' if enabled else 'disabled'}", "services": service_states()}
+
+
 def perform(action: str, parameters: object = None) -> dict:
     if action == "aprs_gain_status":
         return aprs_gain_status()
     if action == "aprs_gain_set":
         return set_aprs_gain(parameters)
+    if action == "aprs_igate_status":
+        return aprs_igate_status()
+    if action == "aprs_igate_enable":
+        return set_aprs_igate(True)
+    if action == "aprs_igate_disable":
+        return set_aprs_igate(False)
+    if action == "rms_enable":
+        return set_rms_enabled(True)
+    if action == "rms_disable":
+        return set_rms_enabled(False)
+    if action == "rms_status":
+        return rms_status()
     if action == "repair_service":
         if not isinstance(parameters, dict):
             return {"ok": False, "action": action, "error": "service repair target is required"}

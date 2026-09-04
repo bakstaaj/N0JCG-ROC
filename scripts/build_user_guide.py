@@ -201,7 +201,7 @@ def add_cover(doc: Document) -> None:
     metadata = doc.add_table(rows=2, cols=4)
     metadata.alignment = WD_TABLE_ALIGNMENT.CENTER
     metadata.style = "Table Grid"
-    values = (("RELEASE", VERSION, "PUBLICATION", "August 2026"),
+    values = (("RELEASE", VERSION, "PUBLICATION", "September 2026"),
               ("PLATFORM", "Ubuntu 24.04 LTS", "AUDIENCE", "Operators and maintainers"))
     for row_index, values_row in enumerate(values):
         for column, value in enumerate(values_row):

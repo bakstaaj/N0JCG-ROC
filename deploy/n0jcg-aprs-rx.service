@@ -15,7 +15,7 @@ Environment=APRS_RTL_SERIAL=00014439
 Environment=APRS_AUDIO_CAPTURE=1
 Environment=APRS_AUDIO_CAPTURE_SECONDS=600
 Environment=APRS_DIREWOLF_AUDIO_STATS_SECONDS=10
-Environment=APRS_IGATE_ENABLED=0
+Environment=APRS_IGATE_ENABLED=1
 EnvironmentFile=-/etc/n0jcg/aprs-igate.env
 ExecStart=/home/n0jcg/sdrdev/N0JCG-ROC/tools/aprs_listener.sh
 Restart=always

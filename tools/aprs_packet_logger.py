@@ -13,6 +13,12 @@ import sys
 FRAME = re.compile(r"^(?:\[[^\]]+\]\s*)?[A-Z0-9][A-Z0-9-]{1,8}>[^:]+:.+$", re.IGNORECASE)
 
 
+def frame_origin(frame: str) -> str:
+    if frame.startswith("[ig]") or re.search(r"(?:^|[>,])qA[A-Za-z0-9*,-]*", frame) or "TCPIP*" in frame:
+        return "internet"
+    return "rf"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--log", required=True)
@@ -25,7 +31,11 @@ def main() -> int:
     with log_path.open("a", encoding="utf-8", buffering=1) as log, records_path.open(
         "a", encoding="utf-8", buffering=1
     ) as records:
-        for raw in sys.stdin:
+        # Dire Wolf may emit extended APRS text (for example a degree symbol)
+        # using a locale-dependent byte. Decode defensively so one malformed
+        # byte cannot terminate the receive pipeline.
+        for raw_bytes in sys.stdin.buffer:
+            raw = raw_bytes.decode("utf-8", errors="replace")
             line = raw.rstrip("\n")
             log.write(line + "\n")
             sys.stdout.write(raw)
@@ -34,6 +44,7 @@ def main() -> int:
                 records.write(json.dumps({
                     "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "frame": line.strip(),
+                    "origin": frame_origin(line.strip()),
                 }) + "\n")
                 records.flush()
     return 0

@@ -9,6 +9,17 @@
   applied by restarting only the APRS listener; the current value is shown
   after operator login.
 
+## 0.1.11 - 2026-09-03
+
+### APRS map and receive operations
+
+- Fixed the APRS map journal reader for larger 24-hour histories by extending
+  its bounded journal query timeout to 30 seconds.
+- Granted the ROC service read access to the systemd journal so locally heard
+  APRS callsigns can populate the map.
+- Added receive-only APRS gain-test tooling and retained direct RF evidence
+  separate from digipeated path observations.
+
 ## 0.1.9 - 2026-08-19
 
 ### CWOP configuration

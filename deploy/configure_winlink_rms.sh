@@ -35,6 +35,25 @@ WINLINK_NODE_CALL="${WINLINK_NODE_CALL:-${WINLINK_BASE_CALL}-15}"
 [[ "${WINLINK_GATEWAY_CALL}" =~ ^[A-Z0-9]{3,6}-[0-9]{1,2}$ ]] || { echo "Invalid gateway call" >&2; exit 1; }
 [[ "${WINLINK_NODE_CALL}" != "${WINLINK_GATEWAY_CALL}" ]] || { echo "Node call must differ from gateway call" >&2; exit 1; }
 [[ "${WINLINK_LOCATOR}" =~ ^[A-R]{2}[0-9]{2}[A-X]{2}$ ]] || { echo "Invalid Maidenhead locator" >&2; exit 1; }
+WINLINK_LATITUDE="${WINLINK_LATITUDE:-38.800788}"
+WINLINK_LONGITUDE="${WINLINK_LONGITUDE:--105.200100}"
+WINLINK_APRS_POSITION="$(python3 - "${WINLINK_LATITUDE}" "${WINLINK_LONGITUDE}" <<'PY'
+import sys
+
+lat, lon = map(float, sys.argv[1:3])
+if not -90 <= lat <= 90 or not -180 <= lon <= 180:
+    raise SystemExit("WINLINK_LATITUDE/LONGITUDE out of range")
+
+def coord(value, positive, negative, width):
+    hemi = positive if value >= 0 else negative
+    value = abs(value)
+    degrees = int(value)
+    minutes = (value - degrees) * 60
+    return f"{degrees:0{width}d}{minutes:05.2f}{hemi}"
+
+print(f"!{coord(lat, 'N', 'S', 2)}W{coord(lon, 'E', 'W', 3)}a")
+PY
+)" || exit 1
 [[ "${WINLINK_FREQUENCY_HZ}" =~ ^[0-9]{9}$ ]] || { echo "Frequency must be an integer in Hz" >&2; exit 1; }
 [[ "${WINLINK_PTT_ENABLED}" == "0" || "${WINLINK_PTT_ENABLED}" == "1" ]] || { echo "WINLINK_PTT_ENABLED must be 0 or 1" >&2; exit 1; }
 
@@ -149,6 +168,7 @@ chmod 0640 /etc/n0jcg/winlink-direwolf.conf
 
 cat > /var/lib/n0jcg-winlink/bpq32.cfg <<EOF
 SIMPLE
+EnableEvents=1
 LOCATOR=${WINLINK_LOCATOR}
 NODECALL=${WINLINK_NODE_CALL}
 NODEALIAS=N0ROC
@@ -164,7 +184,7 @@ ${WINLINK_LOCATOR} - ${WINLINK_FREQUENCY_HZ} Hz
 IDINTERVAL=10
 
 BTEXT:
-${WINLINK_GATEWAY_CALL} RMS Packet Gateway
+${WINLINK_APRS_POSITION}${WINLINK_GATEWAY_CALL} RMS Packet Gateway
 ${WINLINK_FREQUENCY_HZ} Hz - ${WINLINK_LOCATOR}
 ***
 BTINTERVAL=30
@@ -214,6 +234,19 @@ ${post_office_start}
 EOF
 chown n0jcg:n0jcg /var/lib/n0jcg-winlink/bpq32.cfg
 chmod 0600 /var/lib/n0jcg-winlink/bpq32.cfg
+
+# LinBPQ discovers application event handlers by executable name in its
+# working directory.  Keep the handlers outside the writable runtime tree and
+# expose only the two documented mail events as stable symlinks.
+install -d -m 0755 /usr/local/libexec
+install -m 0755 "${PROJECT_ROOT}/tools/winlink_mail_event_logger.py" /usr/local/libexec/n0jcg-winlink-mail-event.py
+ln -sfn /usr/local/libexec/n0jcg-winlink-mail-event.py /var/lib/n0jcg-winlink/MailNewMsg
+ln -sfn /usr/local/libexec/n0jcg-winlink-mail-event.py /var/lib/n0jcg-winlink/MailMsgRead
+chown -h n0jcg:n0jcg /var/lib/n0jcg-winlink/MailNewMsg /var/lib/n0jcg-winlink/MailMsgRead
+if [[ -d /opt/n0jcg/linbpq ]]; then
+  ln -sfn /usr/local/libexec/n0jcg-winlink-mail-event.py /opt/n0jcg/linbpq/MailNewMsg
+  ln -sfn /usr/local/libexec/n0jcg-winlink-mail-event.py /opt/n0jcg/linbpq/MailMsgRead
+fi
 
 if [[ "${WINLINK_POST_OFFICE_ENABLED}" == "1" ]]; then
   sed \

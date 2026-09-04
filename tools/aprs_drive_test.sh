@@ -30,7 +30,7 @@ case "${command}" in
     systemctl daemon-reload
     start_iso="$(date -u --iso-8601=seconds)"
     printf 'started_utc=%s\nservice=%s\nfrequency_hz=%s\nrtl_serial=%s\nrtl_gain_db=%s\n' \
-      "${start_iso}" "${service}" "${APRS_RTL_FREQUENCY_HZ:-144138000}" \
+      "${start_iso}" "${service}" "${APRS_RTL_FREQUENCY_HZ:-144390000}" \
       "${APRS_RTL_SERIAL:-00014439}" "${RTL_GAIN_DB:-service-default}" >"${session}/metadata.txt"
     printf '%s\n' "${session}" >"${state_file}"
     journalctl -fu "${service}" -o short-iso >"${session}/live-journal.log" 2>&1 &

@@ -25,6 +25,18 @@ POSITION_PATTERN = re.compile(r"[!=/@](\d{2})(\d{2}\.\d{2})([NS])[^0-9A-Za-z]?([
 _SETTINGS_LOCK = Lock()
 
 
+def _symbol_from_frame(frame: str, position: re.Match[str]) -> str | None:
+    """Return the APRS table/code pair immediately following an uncompressed position."""
+    # The table identifier is the character between latitude and longitude;
+    # the symbol code follows the longitude hemisphere.
+    span = frame[position.start():position.end()]
+    table = re.search(r"[NS]([/\\A-Z0-9])\d{3}", span)
+    suffix = frame[position.end():]
+    if table and suffix:
+        return table.group(1) + suffix[0]
+    return None
+
+
 def heard_callsigns(log_path: Path, limit: int = APRSFI_MAX_CALLSIGNS) -> list[str]:
     try:
         lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -100,6 +112,7 @@ def _heard_activity_from_journal(lines: list[str], limit: int = APRSFI_MAX_CALLS
             "longitude": longitude,
             "timestamp_utc": record["timestamp_utc"],
             "frame": record["frame"],
+            "symbol": _symbol_from_frame(record["frame"], position),
         })
     tracks = {callsign: points[-200:] for callsign, points in tracks.items()}
     latest_by_callsign: dict[str, dict] = {}
@@ -138,7 +151,7 @@ def recent_heard_activity(window_hours: int = APRS_MAP_WINDOW_HOURS) -> dict:
             capture_output=True,
             check=False,
             text=True,
-            timeout=5,
+            timeout=30,
         )
     except (OSError, subprocess.SubprocessError):
         return {"callsigns": [], "frame_count": 0, "latest_by_callsign": {}, "tracks": {}, "source": "systemd-journal-unavailable"}

@@ -1,0 +1,23 @@
+[Unit]
+Description=N0JCG RMS gateway APRS-IS position beacon (Internet only)
+After=network-online.target n0jcg-winlink-rms.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+EnvironmentFile=-/etc/n0jcg/aprs-igate.env
+Environment=APRS_RMS_BEACON_CALL=N0JCG-10
+Environment=APRS_RMS_BEACON_INTERVAL_SECONDS=1800
+Environment=APRS_RMS_BEACON_LATITUDE=38.800788
+Environment=APRS_RMS_BEACON_LONGITUDE=-105.200100
+Environment="APRS_RMS_BEACON_COMMENT=N0JCG RMS Packet Gateway 145.070 MHz"
+ExecStart=/usr/bin/python3 /usr/local/libexec/n0jcg-rms-aprs-beacon.py
+Restart=always
+RestartSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

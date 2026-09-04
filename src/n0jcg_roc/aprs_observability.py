@@ -41,7 +41,9 @@ def packet_quality(records: list[dict], now: float | None = None) -> dict:
             confidence.append(float(c.group(1)))
     normalized = [re.sub(r"^\[[^\]]+\]\s*", "", str(i.get("frame") or "")) for i in rf]
     duplicates = len(normalized) - len(set(normalized))
-    last_rf = max(((_epoch(i.get("timestamp_utc")) or 0, i) for i in rf), default=(0, None))[1]
+    # Use an explicit key so packets sharing a timestamp do not cause Python
+    # to compare the record dictionaries as a tie-breaker.
+    last_rf = max(rf, key=lambda item: _epoch(item.get("timestamp_utc")) or 0, default=None)
     return {
         "window": "loaded listener history",
         "rf_frames": len(rf),
@@ -70,6 +72,11 @@ def aprs_is_health(records: list[dict], *, journal_lines: list[str] | None = Non
     reconnects = len(re.findall(r"Now connected to IGate server", joined, re.I))
     uploads = [i for i in records if i.get("origin") == "internet"]
     last_upload = uploads[-1].get("timestamp_utc") if uploads else None
+    # A successfully recorded internet-origin frame is authoritative evidence
+    # that Dire Wolf reached APRS-IS, even when the bounded journal excerpt no
+    # longer contains the original connection banner.
+    upload_evidence = bool(uploads)
+    connected = connected or upload_evidence
     if failures and not connected:
         state = "fault"
     elif connected:
@@ -80,10 +87,12 @@ def aprs_is_health(records: list[dict], *, journal_lines: list[str] | None = Non
     match = re.search(r"Now connected to IGate server\s+([^\s(]+)", joined, re.I)
     if match:
         server = match.group(1)
+    if server is None and upload_evidence:
+        server = "APRS-IS"
     return {"state": state, "connected": connected, "server": server,
-            "reconnect_count": reconnects, "failed_connections": failures,
+            "reconnect_count": max(reconnects, 1 if upload_evidence else 0), "failed_connections": failures,
             "last_successful_upload_utc": last_upload,
-            "authentication": "verified" if re.search(r"logresp .* verified", joined, re.I) else "unknown"}
+            "authentication": "verified" if re.search(r"logresp .* verified", joined, re.I) else ("upload observed" if upload_evidence else "unknown")}
 
 
 def update_rf_history(path: Path, records: list[dict], *, now: float | None = None, keep_hours: int = 168) -> dict:

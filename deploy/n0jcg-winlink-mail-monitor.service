@@ -1,0 +1,20 @@
+[Unit]
+Description=N0JCG Winlink mailbox delivery event monitor
+After=network-online.target n0jcg-winlink-rms.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=n0jcg
+Group=n0jcg
+ExecStart=/usr/local/libexec/n0jcg-winlink-mail-store-monitor.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/n0jcg-winlink /var/lib/n0jcg-roc
+
+[Install]
+WantedBy=multi-user.target

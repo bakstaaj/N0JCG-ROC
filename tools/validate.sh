@@ -21,7 +21,7 @@ else
   exit 1
 fi
 
-"${PYTHON_BIN}" -m compileall -q src tests deploy/operator_helper.py
+"${PYTHON_BIN}" -m compileall -q src tests deploy/operator_helper.py tools/winlink_mail_event_logger.py
 "${PYTHON_BIN}" -m unittest discover -s tests -v
 bash -n tools/*.sh deploy/*.sh
 

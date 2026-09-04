@@ -16,9 +16,9 @@ VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
 PREFIX = f"N0JCG-ROC-v{VERSION}"
 DIST = ROOT / "dist"
 PUBLICATIONS = ROOT / "docs" / "publications"
-EXCLUDED_PARTS = {".git", ".venv", ".pytest_cache", "__pycache__", "build", "dist", "runtime"}
-EXCLUDED_FILES = {".server.env", "station.toml"}
-EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".tgz"}
+EXCLUDED_PARTS = {".git", ".venv", ".pytest_cache", "__pycache__", "build", "dist", "runtime", "tmp", "drive-tests", "offline-analysis", "releases"}
+EXCLUDED_FILES = {".server.env", "station.toml", "N0JCG-8_ROC_heard_frames_distance_sorted.csv"}
+EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".tgz", ".wav"}
 
 
 def included_files() -> list[Path]:
@@ -29,7 +29,7 @@ def included_files() -> list[Path]:
             continue
         if any(part in EXCLUDED_PARTS or part.startswith("rendered-") for part in relative.parts):
             continue
-        if path.name in EXCLUDED_FILES or path.suffix in EXCLUDED_SUFFIXES:
+        if path.name in EXCLUDED_FILES or path.name.endswith(".tar.gz") or path.suffix in EXCLUDED_SUFFIXES:
             continue
         files.append(path)
     return sorted(files, key=lambda item: item.as_posix())

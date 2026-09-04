@@ -318,7 +318,13 @@ def collect_aprs_frame_records(*, runner=None, max_lines: int = 50000) -> list[d
 
 def aprs_frame_origin(frame: str) -> str:
     """Identify locally generated APRS-IS traffic separately from RF decodes."""
-    return "internet" if frame.startswith("[ig]") else "rf"
+    # Dire Wolf prefixes APRS-IS traffic with [ig] (and [ig>tx] for outbound
+    # traffic), but it may also log a server-replayed frame with only its
+    # routing header. qA* and TCPIP* are APRS-IS path constructs and must never
+    # be presented as proof of local RF reception.
+    if frame.startswith("[ig]") or re.search(r"(?:^|[>,])qA[A-Za-z0-9*,-]*", frame) or "TCPIP*" in frame:
+        return "internet"
+    return "rf"
 
 
 def _aprs_receiver_process_active() -> bool:

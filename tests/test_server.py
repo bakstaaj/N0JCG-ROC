@@ -33,7 +33,7 @@ from n0jcg_roc.aprs_map import (  # noqa: E402
     heard_callsigns,
     load_aprsfi_settings,
 )
-from n0jcg_roc.server import collect_aprs_frame_records, create_server, parse_aprs_frames  # noqa: E402
+from n0jcg_roc.server import aprs_frame_origin, collect_aprs_frame_records, create_server, parse_aprs_frames  # noqa: E402
 from n0jcg_roc.operator_controls import OperatorAuth, make_password_record  # noqa: E402
 from n0jcg_roc.operator_activity import parse_rf_session_active  # noqa: E402
 from n0jcg_roc.licensing import (  # noqa: E402
@@ -58,6 +58,17 @@ from n0jcg_roc.winlink import (  # noqa: E402
 
 
 class SafetyTests(unittest.TestCase):
+    def test_aprs_is_frames_are_not_classified_as_rf(self) -> None:
+        self.assertEqual(
+            aprs_frame_origin("[ig>tx] N0SZ-2>APMI06,TCPIP*,qAS,N0SZ:T#118,164"),
+            "internet",
+        )
+        self.assertEqual(
+            aprs_frame_origin("[0.3] K5RHD-9>APMI06,BADGR,qAR,K0DRJ:payload"),
+            "internet",
+        )
+        self.assertEqual(aprs_frame_origin("[0.3] BADGR>APN391:payload"), "rf")
+
     def test_cwop_settings_are_validated_and_persisted(self) -> None:
         with TemporaryDirectory() as temporary:
             path = Path(temporary) / "cwop.json"
@@ -145,6 +156,10 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("--connect", helper)
         self.assertIn('action == "trial_services_stop"', helper)
         self.assertIn('action == "trial_services_start"', helper)
+        self.assertIn('action == "aprs_igate_enable"', helper)
+        self.assertIn('action == "aprs_igate_disable"', helper)
+        self.assertIn('action == "rms_enable"', helper)
+        self.assertIn('action == "rms_disable"', helper)
         self.assertIn('"n0jcg-aprs-rx.service"', helper)
         self.assertIn('"n0jcg-weather.service"', helper)
         self.assertIn("probe_rf_session", helper)
@@ -247,9 +262,12 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("APRS_RTL_SERIAL", listener)
         self.assertIn("APRS_IGATE_PASSCODE", listener)
         self.assertIn("PBEACON SENDTO=IG", listener)
-        self.assertIn("720:00", listener)
+        self.assertIn("30:00", listener)
         self.assertIn('SYMBOL="igate"', listener)
         self.assertIn("RTL_GAIN_DB", listener)
+        self.assertIn("APRS_RTL_FREQUENCY_HZ:-144390000", listener)
+        self.assertIn("-E dc", listener)
+        self.assertNotIn("-E offset", listener)
         self.assertIn("direwolf -q h -r 48000", listener)
         self.assertNotIn("PTT", listener.upper())
         server = (ROOT / "src" / "n0jcg_roc" / "server.py").read_text(encoding="utf-8")
@@ -1174,8 +1192,9 @@ class ServerTests(unittest.TestCase):
             '2026-08-10T18:44:12-06:00 roc LINBPQ[1]: Sending "Application":"BPQ32","Server":"N0JCG","Client":"N0JCG","Mode":"Packet 1200","Frequency":145070000,"LastCommand":"FQ","MessagesSent":0,"MessagesReceived":1,"BytesSent":95,"BytesReceived":831,"HoldingSeconds":69',
         ]
         parsed = parse_linbpq_journal(lines)
-        self.assertEqual(parsed["session_count"], 2)
+        self.assertEqual(parsed["session_count"], 3)
         self.assertEqual(parsed["last_session"]["messages_received"], 1)
+        self.assertEqual(parsed["last_session"]["source"], "bpq32-cms-report")
         self.assertEqual(parsed["last_session"]["timestamp_utc"], "2026-08-11T00:44:12Z")
         self.assertTrue(all(parsed["commissioning"].values()))
 
@@ -1187,7 +1206,16 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(parsed["session_count"], 1)
         self.assertEqual(parsed["last_session"]["caller"], "N0JCG-3")
         self.assertEqual(parsed["last_session"]["bytes_sent"], 873)
+        self.assertIsNone(parsed["last_session"]["messages_sent"])
         self.assertTrue(parsed["last_session"]["successful"])
+
+    def test_winlink_kiss_stats_preserve_reported_message_counts(self) -> None:
+        lines = [
+            "2026-08-17T16:29:53-06:00 roc LINBPQ[1]: KISS Session Stats Port 2 N0JCG-3 N0JCG-10 33 secs Bytes Sent 873 BPM 1587.27 Bytes Received 84 152.73 BPM Messages Sent 2 Messages Received 1",
+        ]
+        parsed = parse_linbpq_journal(lines)
+        self.assertEqual(parsed["last_session"]["messages_sent"], 2)
+        self.assertEqual(parsed["last_session"]["messages_received"], 1)
 
     def test_winlink_session_ledger_deduplicates_and_summarizes_24_hours(self) -> None:
         sessions = [

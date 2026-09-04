@@ -8,13 +8,12 @@ The RTL dongle is the APRS receiver. The DigiRig USB audio interface is reserved
 for the future Winlink/packet-radio path. The planned receive pipeline is:
 
 ```bash
-rtl_fm -d 0 -f 144390000 -M fm -s 240000 -r 48000 -g 0 - \
+rtl_fm -d 00014439 -f 144390000 -M fm -E dc -p 0 -s 48000 -r 48000 -g 0 - \
   | direwolf -r 48000 -c config/direwolf.aprs-rx.example.conf -
 ```
 
-The RTL EEPROM serial (`00014439`) must be resolved before replacing `-d 0`
-with a persistent device-selection rule. Linux device indexes are observations,
-not identities. The pipeline feeds Dire Wolf through stdin and exposes only the
+The RTL EEPROM serial (`00014439`) is used directly; Linux device indexes are
+observations, not identities. The pipeline feeds Dire Wolf through stdin and exposes only the
 configured local AGW/KISS listener ports (`18000`/`18001`); it does not use the
 DigiRig audio card or transmit.
 
@@ -36,3 +35,8 @@ audio to Dire Wolf. The deployed service keeps the most recent 60 seconds in
 `runtime/aprs/audio-ring.wav`; this helps check whether AFSK audio is arriving
 when a packet is not decoded. It does not transmit or change the receive
 frequency. Set `APRS_AUDIO_CAPTURE=0` to disable it.
+
+`-E dc` removes the RTL DC component. Do not add `-E offset`: the ROC Blog V4
+driver rejects offset-tuning mode and emits a warning. It is unrelated to the
+obsolete 252 kHz workaround. Use direct `144390000` Hz tuning and adjust only
+`-p <ppm>` when a measured reference requires crystal correction.

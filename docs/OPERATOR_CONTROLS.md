@@ -1,19 +1,28 @@
 # Protected operator controls
 
-The ROC dashboard provides four allowlisted administrative operations:
+The ROC dashboard provides allowlisted administrative operations:
 
 - orderly restart of Dire Wolf and LinBPQ;
 - enter maintenance mode by stopping the RMS and modem;
 - return the modem and RMS to service;
 - run an authenticated, network-only CMS connectivity test.
+- enable or disable the receive-only APRS-IS iGate;
+- enable or disable the Winlink RMS modem and RMS services as a pair.
 
 The CMS test is blocked whenever LinBPQ reports an active RF AX.25 link. The
 web API and the root-owned helper each perform the check independently, and an
 unavailable or malformed LinBPQ activity response blocks the test. This avoids
 opening a competing CMS session during an RF message transfer.
 
-It also provides a privacy-safe diagnostics download. There is no RF test or
-general command-execution control in the browser.
+It also provides a privacy-safe diagnostics download. The APRS iGate control
+requires configured APRS-IS credentials and only restarts the receive-only
+listener. Starting RMS is blocked when RF activity cannot be verified or an
+active session is present. There is no general command-execution control in the
+browser.
+
+The installed APRS listener defaults to APRS-IS enabled and emits an
+internet-only iGate beacon every 30 minutes. The operator tile can temporarily
+disable it by writing a service drop-in.
 
 ## Set or change the administrator password
 
@@ -37,7 +46,7 @@ password and invalidates existing sessions.
 - State-changing requests require a session-bound CSRF token.
 - Five failed logins in ten minutes temporarily rate-limit the source address.
 - The web service has no sudo permission.
-- A root-owned helper accepts only the four named operations through a local
+- A root-owned helper accepts only the fixed, named operations through a local
   Unix socket.
 - Operator events are recorded in
   `/var/lib/n0jcg-roc/operator-audit.jsonl` without passwords or message data.

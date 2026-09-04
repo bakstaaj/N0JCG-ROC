@@ -360,7 +360,7 @@ function showWinlink(gateway) {
   document.querySelector("#winlink-session-caller").textContent = session?.caller || "No RF session";
   document.querySelector("#winlink-session-time").textContent = session ? formatTimestamp(session.timestamp_utc) : "No completed RF session recorded";
   document.querySelector("#winlink-session-result").textContent = session?.successful ? "Successful" : (session ? "Incomplete" : "Waiting");
-  document.querySelector("#winlink-session-messages").textContent = session ? `${session.messages_sent} sent · ${session.messages_received} received` : "—";
+  document.querySelector("#winlink-session-messages").textContent = session ? "Not reported by KISS" : "—";
   document.querySelector("#winlink-session-bytes").textContent = session ? `${formatTransferBytes(session.bytes_sent)} out · ${formatTransferBytes(session.bytes_received)} in` : "—";
   document.querySelector("#winlink-session-duration").textContent = session?.duration_seconds == null ? "—" : `${session.duration_seconds} seconds`;
   document.querySelector("#winlink-cms-state").textContent = winlink.cms?.last_session_successful ? "Authenticated" : "No successful session";
@@ -423,8 +423,8 @@ function showWinlinkStatistics(statistics) {
   document.querySelector("#winlink-stat-callsigns").textContent = String(statistics.unique_callsigns ?? 0);
   document.querySelector("#winlink-stat-success").textContent = statistics.success_percent == null ? "—" : `${statistics.success_percent}%`;
   document.querySelector("#winlink-stat-duration").textContent = statistics.average_duration_seconds == null ? "—" : `${statistics.average_duration_seconds}s`;
-  document.querySelector("#winlink-stat-sent").textContent = String(statistics.messages_sent ?? 0);
-  document.querySelector("#winlink-stat-received").textContent = String(statistics.messages_received ?? 0);
+  document.querySelector("#winlink-stat-sent").textContent = formatTransferBytes(statistics.bytes_sent ?? 0);
+  document.querySelector("#winlink-stat-received").textContent = formatTransferBytes(statistics.bytes_received ?? 0);
   document.querySelector("#winlink-activity-window").textContent = `${statistics.window_hours || 24}-hour rolling window`;
   const chart = document.querySelector("#winlink-hourly-chart");
   const hourly = Array.isArray(statistics.hourly) ? statistics.hourly : [];
@@ -494,7 +494,7 @@ async function loadWinlinkSessions() {
       session.caller || "—",
       session.successful ? "Successful" : "Failed",
       session.duration_seconds == null ? "—" : `${session.duration_seconds}s`,
-      `${session.messages_sent || 0} sent · ${session.messages_received || 0} received`,
+      "Not reported by KISS",
       `${formatTransferBytes(session.bytes_sent)} out · ${formatTransferBytes(session.bytes_received)} in`,
     ];
     values.forEach((value, index) => {
@@ -989,6 +989,52 @@ function showOperatorStatus(status) {
     cmsGuard.textContent = "RF channel idle. CMS connection testing is available.";
   }
   cmsGuard.classList.toggle("is-blocked", cmsBlocked && status.authenticated);
+  refreshProtectedServiceTiles(status.authenticated).catch(() => {});
+}
+
+async function refreshProtectedServiceTiles(authenticated) {
+  const cards = [
+    {key: "aprs_igate", statusAction: "aprs_igate_status", enable: "aprs_igate_enable", disable: "aprs_igate_disable", label: "APRS iGate"},
+    {key: "rms", statusAction: "rms_status", enable: "rms_enable", disable: "rms_disable", label: "RMS tools"},
+  ];
+  for (const card of cards) {
+    const state = document.querySelector(`[data-service-state="${card.key}"]`);
+    const button = document.querySelector(`[data-service-toggle="${card.key}"]`);
+    if (!state || !button) continue;
+    button.disabled = !authenticated;
+    if (!authenticated) { state.textContent = "Operator login required"; state.className = "application-state application-state--advisory"; button.textContent = `Enable ${card.label}`; continue; }
+    try {
+      const response = await fetch("/api/operator/action", {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken}, body: JSON.stringify({action: card.statusAction})});
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "status unavailable");
+      const enabled = Boolean(payload.enabled);
+      state.textContent = enabled ? "Enabled · active" : "Disabled";
+      state.className = `application-state application-state--${enabled ? "online" : "advisory"}`;
+      button.textContent = enabled ? `Disable ${card.label}` : `Enable ${card.label}`;
+      button.dataset.serviceAction = enabled ? card.disable : card.enable;
+      button.disabled = false;
+    } catch (error) {
+      state.textContent = "Status unavailable";
+      state.className = "application-state application-state--offline";
+      button.disabled = true;
+    }
+  }
+}
+
+async function toggleProtectedService(button) {
+  const action = button.dataset.serviceAction;
+  if (!action || !operatorCsrfToken) return;
+  const label = button.textContent;
+  if (!window.confirm(`${label}?`)) return;
+  button.disabled = true;
+  operatorMessage("Applying service setting…");
+  try {
+    const response = await fetch("/api/operator/action", {method: "POST", credentials: "same-origin", headers: {"Content-Type": "application/json", "X-CSRF-Token": operatorCsrfToken}, body: JSON.stringify({action})});
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Service setting failed");
+    operatorMessage(payload.message || "Service setting applied.");
+    await refreshProtectedServiceTiles(true);
+  } catch (error) { operatorMessage(error.message, true); await refreshProtectedServiceTiles(Boolean(operatorCsrfToken)); }
 }
 
 let aprsGainSaveInFlight = false;
@@ -1172,6 +1218,7 @@ function initOperatorControls() {
   document.querySelectorAll("[data-operator-action]").forEach((button) => {
     button.addEventListener("click", () => runOperatorAction(button.dataset.operatorAction, button.dataset.operatorService ? {service: button.dataset.operatorService, label: button.textContent.trim()} : {}));
   });
+  document.querySelectorAll("[data-service-toggle]").forEach((button) => button.addEventListener("click", () => toggleProtectedService(button)));
   document.querySelector("#operator-aprs-gain-save")?.addEventListener("click", saveAprsGain);
   document.querySelector("#operator-aprs-gain")?.addEventListener("input", () => {
     aprsGainDirty = true;
@@ -1647,18 +1694,39 @@ function showAprsMap(payload) {
   const stations = payload.stations || [];
   const mapCenter = payload.map_center || {latitude: 38.8008, longitude: -105.2001};
   aprsMapCenter = mapCenter;
-  const localStations = stations.filter((station) => distanceKm(mapCenter, station) <= 250);
-  const outsideArea = stations.length - localStations.length;
+  const tracks = payload.tracks || {};
+  const trackEntries = Object.entries(tracks).filter(([, points]) => Array.isArray(points) && points.length >= 2);
+  // When aprs.fi is unavailable, promote the latest ROC-heard track point to
+  // a marker so the map still identifies each locally received station.
+  const trackStations = trackEntries.map(([callsign, points]) => {
+    const latest = points[points.length - 1];
+    return {
+      callsign,
+      latitude: latest.latitude,
+      longitude: latest.longitude,
+      heard_utc: latest.timestamp_utc,
+      heard_frame: latest.frame,
+      symbol: latest.symbol || null,
+      aprsfi_url: `https://aprs.fi/${callsign}`,
+    };
+  });
+  const stationByCallsign = new Map(stations.map((station) => [station.callsign, station]));
+  trackStations.forEach((station) => {
+    const existing = stationByCallsign.get(station.callsign);
+    if (!existing) stationByCallsign.set(station.callsign, station);
+    else if (!existing.symbol && station.symbol) stationByCallsign.set(station.callsign, {...existing, symbol: station.symbol, heard_utc: station.heard_utc, heard_frame: station.heard_frame});
+  });
+  const displayStations = [...stationByCallsign.values()];
+  const localStations = displayStations.filter((station) => distanceKm(mapCenter, station) <= 250);
+  const outsideArea = displayStations.length - localStations.length;
   const showAllButton = document.querySelector("#aprs-map-show-all");
   showAllButton.hidden = outsideArea === 0;
-  summary.textContent = `${payload.frame_count || 0} frames · ${payload.callsign_count || 0} callsigns heard in the last ${payload.window_hours || 24} hours · ${stations.length} current positions${outsideArea ? ` · ${outsideArea} outside ROC area` : ""}`;
+  summary.textContent = `${payload.frame_count || 0} frames · ${payload.callsign_count || 0} callsigns heard in the last ${payload.window_hours || 24} hours · ${displayStations.length} positions${outsideArea ? ` · ${outsideArea} outside ROC area` : ""}`;
 
   if (!initAprsMap()) return;
   aprsMarkerLayer.clearLayers();
   aprsTrackLayer?.clearLayers();
   const trackLegend = document.querySelector("#aprs-map-track-legend");
-  const tracks = payload.tracks || {};
-  const trackEntries = Object.entries(tracks).filter(([, points]) => Array.isArray(points) && points.length >= 2);
   if (trackLegend) {
     trackLegend.replaceChildren();
     trackEntries.forEach(([callsign], index) => {
@@ -1682,7 +1750,7 @@ function showAprsMap(payload) {
       lineJoin: "round",
     }).bindTooltip(`${callsign} · ${points.length} ROC-heard positions`).addTo(aprsTrackLayer);
   });
-  stations.forEach((station) => {
+  displayStations.forEach((station) => {
     const icon = aprsSymbolIcon(station.symbol);
     const marker = icon
       ? L.marker([station.latitude, station.longitude], {icon})
@@ -1698,8 +1766,15 @@ function showAprsMap(payload) {
       className: "aprs-callsign-tooltip",
     }).bindPopup(stationPopup(station)).addTo(aprsMarkerLayer);
   });
-  if (aprsMarkerLayer.getLayers().length) {
-    aprsAllBounds = aprsMarkerLayer.getBounds();
+  // ROC-heard tracks are usable map content even when the optional aprs.fi
+  // position lookup is unavailable.  Do not cover them with the upstream
+  // error overlay; the footer/API response still communicates the outage.
+  const hasTrackContent = trackEntries.length > 0;
+  if (aprsMarkerLayer.getLayers().length || hasTrackContent) {
+    const markerBounds = aprsMarkerLayer.getBounds();
+    const trackBounds = L.latLngBounds();
+    trackEntries.forEach(([, points]) => points.forEach((point) => trackBounds.extend([point.latitude, point.longitude])));
+    aprsAllBounds = markerBounds.isValid() ? markerBounds : trackBounds;
     if (localStations.length) {
       const localBounds = L.latLngBounds(localStations.map((station) => [station.latitude, station.longitude]));
       aprsLocalBounds = localBounds;

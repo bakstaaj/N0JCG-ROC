@@ -11,5 +11,7 @@ config/station.toml
 runtime/
 build/
 dist/
+offline-analysis/
+tmp/
 docs/rendered/
 docs/rendered-*/

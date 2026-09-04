@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 User=n0jcg
 Group=n0jcg
+SupplementaryGroups=systemd-journal
 WorkingDirectory=/home/n0jcg/sdrdev/N0JCG-ROC
 Environment=PYTHONPATH=/home/n0jcg/sdrdev/N0JCG-ROC/src
 Environment=ROC_APPLICATION_SETTINGS=/var/lib/n0jcg-roc/applications.json
